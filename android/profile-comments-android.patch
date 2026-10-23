@@ -1,0 +1,2892 @@
+diff --git a/.github/workflows/profile-comments-apk.yml b/.github/workflows/profile-comments-apk.yml
+new file mode 100644
+index 0000000..b27608c
+--- /dev/null
++++ b/.github/workflows/profile-comments-apk.yml
+@@ -0,0 +1,43 @@
++# Builds a test APK of this branch (Telegram Beta package, installs next to the regular app).
++# GitHub → Actions → "Build Profile Comments APK" → Run workflow. The APK appears under Artifacts.
++name: Build Profile Comments APK
++
++on:
++  workflow_dispatch:
++  push:
++    branches: [ profile-comments ]
++
++jobs:
++  apk:
++    runs-on: ubuntu-latest
++    timeout-minutes: 340
++    steps:
++      - name: Free disk space
++        run: |
++          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/share/swift /opt/hostedtoolcache/CodeQL || true
++          df -h /
++
++      - uses: actions/checkout@v4
++        with:
++          submodules: recursive
++
++      - uses: actions/setup-java@v4
++        with:
++          distribution: temurin
++          java-version: 17
++
++      - name: Install Android NDK, CMake and SDK 36
++        run: |
++          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
++          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" "cmake;3.22.1" "platforms;android-36" "build-tools;36.0.0" > /dev/null
++
++      - name: Build debug APK
++        run: |
++          chmod +x gradlew
++          ./gradlew :TMessagesProj_App:assembleAfatDebug --no-daemon --stacktrace \
++            -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=1g"
++
++      - uses: actions/upload-artifact@v4
++        with:
++          name: telegram-profile-comments-apk
++          path: TMessagesProj_App/build/outputs/apk/**/*.apk
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/SharedMediaLayout.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/SharedMediaLayout.java
+index f570f57..cf00647 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Components/SharedMediaLayout.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Components/SharedMediaLayout.java
+@@ -147,6 +147,8 @@ import org.telegram.ui.Components.poll.PollAttachedMediaPack;
+ import org.telegram.ui.ContentPreviewViewer;
+ import org.telegram.ui.DialogsActivity;
+ import org.telegram.ui.Gifts.ProfileGiftsContainer;
++import org.telegram.ui.ProfileComments.ProfileCommentsContainer;
++import org.telegram.ui.ProfileComments.ProfileCommentsController;
+ import org.telegram.ui.LaunchActivity;
+ import org.telegram.ui.LocationActivity;
+ import org.telegram.ui.PhotoViewer;
+@@ -192,6 +194,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
+     public static final int TAB_BOT_PREVIEWS = 13;
+     public static final int TAB_GIFTS = 14;
+     public static final int TAB_POLL = 15;
++    public static final int TAB_PROFILE_COMMENTS = 16;
+     private static final int TAB_STORIES_ALBUM_PREFIX = 0x00010000;
+     private static final int TAB_STORIES_ALBUM_MASK = 0x0000FFFF;
+ 
+@@ -667,6 +670,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
+     private ChatActivityContainer savedMessagesContainer;
+     private BotPreviewsEditContainer botPreviewsContainer;
+     public ProfileGiftsContainer giftsContainer;
++    public ProfileCommentsContainer commentsContainer;
+     public ProfileStoriesCollectionTabs storiesContainer;
+     private ChatUsersAdapter chatUsersAdapter;
+     private ItemTouchHelper storiesReorder;
+@@ -2590,6 +2594,14 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
+                 (topPanelLayout != null ? ((int) topPanelLayout.getAnimatedHeightWithPadding(0)) : 0)
+             );
+ 
++            if (DialogObject.isUserDialog(dialog_id) && ProfileCommentsController.getInstance(profileActivity.getCurrentAccount()).isSupported(dialog_id)) {
++                commentsContainer = new ProfileCommentsContainer(profileActivity, context, profileActivity.getCurrentAccount(), dialog_id, resourcesProvider);
++                commentsContainer.setPaddingTop(
++                    dp(48) +
++                    (topPanelLayout != null ? ((int) topPanelLayout.getAnimatedHeightWithPadding(0)) : 0)
++                );
++            }
++
+             storiesContainer = new ProfileStoriesCollectionTabs(
+                 context,
+                 sizeNotifierFrameLayout,
+@@ -3702,6 +3714,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
+             topPanelLayout.setOnAnimatedHeightChangedListener(() -> {
+                 topLayoutPadding = (int) topPanelLayout.getAnimatedHeightWithPadding(dp(14));
+ 
++                if (commentsContainer != null) {
++                    commentsContainer.setPaddingTop(dp(48) + (int) topPanelLayout.getAnimatedHeightWithPadding(dp(7)));
++                }
+                 if (giftsContainer != null) {
+                     giftsContainer.setPaddingTop(dp(48) + (int) topPanelLayout.getAnimatedHeightWithPadding(dp(7)));
+                 }
+@@ -4819,7 +4834,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
+             if (lastVisiblePosition + 1 >= profileActivity.getMessagesController().getSavedMessagesController().getLoadedCount()) {
+                 profileActivity.getMessagesController().getSavedMessagesController().loadDialogs(false);
+             }
+-        } else if (mediaPage.selectedType != TAB_RECOMMENDED_CHANNELS && mediaPage.selectedType != TAB_SAVED_MESSAGES && mediaPage.selectedType != TAB_BOT_PREVIEWS && mediaPage.selectedType != TAB_GIFTS) {
++        } else if (mediaPage.selectedType != TAB_RECOMMENDED_CHANNELS && mediaPage.selectedType != TAB_SAVED_MESSAGES && mediaPage.selectedType != TAB_BOT_PREVIEWS && mediaPage.selectedType != TAB_GIFTS && mediaPage.selectedType != TAB_PROFILE_COMMENTS) {
+             final int threshold;
+             if (mediaPage.selectedType == 0) {
+                 threshold = 3;
+@@ -4945,7 +4960,8 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
+             type != TAB_SAVED_DIALOGS &&
+             type != TAB_RECOMMENDED_CHANNELS &&
+             type != TAB_BOT_PREVIEWS &&
+-            type != TAB_GIFTS
++            type != TAB_GIFTS &&
++            type != TAB_PROFILE_COMMENTS
+         );
+     }
+ 
+@@ -5753,6 +5769,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
+         if (mediaPages[0].selectedType == TAB_GIFTS) {
+             return giftsContainer.getCurrentListView();
+         }
++        if (mediaPages[0].selectedType == TAB_PROFILE_COMMENTS && commentsContainer != null) {
++            return commentsContainer.getCurrentListView();
++        }
+         if (mediaPages[0].selectedType == TAB_SAVED_MESSAGES && savedMessagesContainer != null) {
+             return savedMessagesContainer.chatActivity.getChatListView();
+         }
+@@ -6010,6 +6029,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
+         if (giftsContainer != null) {
+             giftsContainer.setVisibleHeight(height);
+         }
++        if (commentsContainer != null) {
++            commentsContainer.setVisibleHeight(height);
++        }
+     }
+ 
+     protected void onActionModeSelectedUpdate(SparseArray<MessageObject> messageObjects) {
+@@ -6859,6 +6881,7 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
+         boolean hasBotPreviews = user != null && user.bot && !user.bot_can_edit && (userInfo != null && userInfo.bot_info != null && userInfo.bot_info.has_preview_medias) && !hasEditBotPreviews;
+         boolean hasStories = (DialogObject.isUserDialog(dialog_id) || DialogObject.isChatDialog(dialog_id)) && !DialogObject.isEncryptedDialog(dialog_id) && (userInfo != null && userInfo.stories_pinned_available || info != null && info.stories_pinned_available || isStoriesView()) && includeStories();
+         boolean hasGifts = giftsContainer != null && (userInfo != null && userInfo.stargifts_count > 0 || info != null && info.stargifts_count > 0);
++        boolean hasProfileComments = commentsContainer != null && !isStoriesView() && ProfileCommentsController.getInstance(profileActivity.getCurrentAccount()).isTabVisible(dialog_id);
+         final TLRPC.ProfileTab main_tab = info != null ? info.main_tab : userInfo != null ? userInfo.main_tab : null;
+         int changed = 0;
+         if (wasReordering != scrollSlidingTextTabStrip.isReordering()) {
+@@ -6873,6 +6896,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
+         if (isSearchingStories() != scrollSlidingTextTabStrip.hasTab(TAB_STORIES)) {
+             changed++;
+         }
++        if (hasProfileComments != scrollSlidingTextTabStrip.hasTab(TAB_PROFILE_COMMENTS)) {
++            changed++;
++        }
+         if (hasGifts != scrollSlidingTextTabStrip.hasTab(TAB_GIFTS)) {
+             changed++;
+         } else if (giftsContainer != null && hasGifts && giftsLastHash != giftsContainer.getLastEmojisHash()) {
+@@ -6986,6 +7012,9 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
+                 tabs.add(new Pair(TAB_GIFTS, TextUtils.concat(getString(R.string.ProfileGifts), giftsContainer.getLastEmojis(null))));
+                 giftsLastHash = giftsContainer.getLastEmojisHash();
+             }
++            if (hasProfileComments) {
++                tabs.add(new Pair(TAB_PROFILE_COMMENTS, getString(R.string.ProfileCommentsTab)));
++            }
+             if (hasEditBotPreviews) {
+                 tabs.add(new Pair(TAB_BOT_PREVIEWS, getString(R.string.ProfileBotPreviewTab)));
+             }
+@@ -7380,6 +7409,16 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
+                     mediaPages[a].addView(giftsContainer);
+                     mediaPages[a].emptyView.setVisibility(View.INVISIBLE);
+                 }
++            } else if (mediaPages[a].selectedType == TAB_PROFILE_COMMENTS) {
++                if (currentAdapter != null) {
++                    recycleAdapter(currentAdapter);
++                    mediaPages[a].listView.setAdapter(null);
++                }
++                if (commentsContainer != null && commentsContainer.getParent() != mediaPages[a]) {
++                    AndroidUtilities.removeFromParent(commentsContainer);
++                    mediaPages[a].addView(commentsContainer);
++                    mediaPages[a].emptyView.setVisibility(View.INVISIBLE);
++                }
+             }
+             final boolean photos = mediaPages[a].selectedType == TAB_PHOTOVIDEO || isAnyStoryPageType(mediaPages[a].selectedType);
+             mediaPages[a].progressView.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL, photos ? 0 : 12, 48 + (photos ? 8 : 12), photos ? 0 : 12, photos ? 0 : 12));
+@@ -7426,7 +7465,10 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
+             if (giftsContainer != null && mediaPages[a].selectedType != TAB_GIFTS && giftsContainer.getParent() == mediaPages[a]) {
+                 mediaPages[a].removeView(giftsContainer);
+             }
+-            if (mediaPages[a].selectedType == TAB_PHOTOVIDEO || mediaPages[a].selectedType == TAB_SAVED_DIALOGS || isAnyStoryPageType(mediaPages[a].selectedType)|| mediaPages[a].selectedType == TAB_VOICE || mediaPages[a].selectedType == TAB_GIF || mediaPages[a].selectedType == TAB_COMMON_GROUPS || mediaPages[a].selectedType == TAB_GROUPUSERS && !delegate.canSearchMembers() || mediaPages[a].selectedType == TAB_RECOMMENDED_CHANNELS || mediaPages[a].selectedType == TAB_BOT_PREVIEWS || mediaPages[a].selectedType == TAB_GIFTS) {
++            if (commentsContainer != null && mediaPages[a].selectedType != TAB_PROFILE_COMMENTS && commentsContainer.getParent() == mediaPages[a]) {
++                mediaPages[a].removeView(commentsContainer);
++            }
++            if (mediaPages[a].selectedType == TAB_PHOTOVIDEO || mediaPages[a].selectedType == TAB_SAVED_DIALOGS || isAnyStoryPageType(mediaPages[a].selectedType)|| mediaPages[a].selectedType == TAB_VOICE || mediaPages[a].selectedType == TAB_GIF || mediaPages[a].selectedType == TAB_COMMON_GROUPS || mediaPages[a].selectedType == TAB_GROUPUSERS && !delegate.canSearchMembers() || mediaPages[a].selectedType == TAB_RECOMMENDED_CHANNELS || mediaPages[a].selectedType == TAB_BOT_PREVIEWS || mediaPages[a].selectedType == TAB_GIFTS || mediaPages[a].selectedType == TAB_PROFILE_COMMENTS) {
+                 if (animated) {
+                     searchItemState = 2;
+                 } else {
+@@ -7486,6 +7528,8 @@ public class SharedMediaLayout extends FrameLayout implements NotificationCenter
+ 
+             } else if (mediaPages[a].selectedType == TAB_GIFTS) {
+ 
++            } else if (mediaPages[a].selectedType == TAB_PROFILE_COMMENTS) {
++
+             } else {
+                 int type = mediaPages[a].selectedType;
+                 if (type == TAB_POLL) {
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/PrivacySettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/PrivacySettingsActivity.java
+index 6ce417f..a978777 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/PrivacySettingsActivity.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/PrivacySettingsActivity.java
+@@ -50,6 +50,8 @@ import org.telegram.messenger.SharedConfig;
+ import org.telegram.tgnet.ConnectionsManager;
+ import org.telegram.tgnet.TLRPC;
+ import org.telegram.tgnet.tl.TL_account;
++import org.telegram.ui.ProfileComments.ProfileCommentsSettingsActivity;
++import org.telegram.ui.ProfileComments.ProfileCommentsController;
+ import org.telegram.ui.ActionBar.ActionBar;
+ import org.telegram.ui.ActionBar.AlertDialog;
+ import org.telegram.ui.ActionBar.BackDrawable;
+@@ -103,6 +105,7 @@ public class PrivacySettingsActivity extends BaseFragment implements Notificatio
+     private int musicRow;
+     @Keep
+     private int giftsRow;
++    private int profileCommentsRow;
+     @Keep
+     private int birthdayRow;
+     @Keep
+@@ -427,6 +430,8 @@ public class PrivacySettingsActivity extends BaseFragment implements Notificatio
+                 presentFragment(new PrivacyControlActivity(ContactsController.PRIVACY_RULES_TYPE_BIRTHDAY));
+             } else if (position == giftsRow) {
+                 presentFragment(new PrivacyControlActivity(ContactsController.PRIVACY_RULES_TYPE_GIFTS));
++            } else if (position == profileCommentsRow) {
++                presentFragment(new ProfileCommentsSettingsActivity());
+             } else if (position == forwardsRow) {
+                 presentFragment(new PrivacyControlActivity(ContactsController.PRIVACY_RULES_TYPE_FORWARDS));
+             } else if (position == voicesRow) {
+@@ -748,6 +753,7 @@ public class PrivacySettingsActivity extends BaseFragment implements Notificatio
+         }
+         birthdayRow = rowCount++;
+         giftsRow = rowCount++;
++        profileCommentsRow = rowCount++;
+         bioRow = rowCount++;
+         musicRow = rowCount++;
+         groupsRow = rowCount++;
+@@ -1029,6 +1035,7 @@ public class PrivacySettingsActivity extends BaseFragment implements Notificatio
+                     position == musicRow && !getContactsController().getLoadingPrivacyInfo(ContactsController.PRIVACY_RULES_TYPE_MUSIC) ||
+                     position == birthdayRow && !getContactsController().getLoadingPrivacyInfo(ContactsController.PRIVACY_RULES_TYPE_BIRTHDAY) ||
+                     position == giftsRow && !getContactsController().getLoadingPrivacyInfo(ContactsController.PRIVACY_RULES_TYPE_GIFTS) ||
++                    position == profileCommentsRow ||
+                     position == forwardsRow && !getContactsController().getLoadingPrivacyInfo(ContactsController.PRIVACY_RULES_TYPE_FORWARDS) ||
+                     position == phoneNumberRow && !getContactsController().getLoadingPrivacyInfo(ContactsController.PRIVACY_RULES_TYPE_PHONE) ||
+                     position == voicesRow && !getContactsController().getLoadingPrivacyInfo(ContactsController.PRIVACY_RULES_TYPE_VOICE_MESSAGES) ||
+@@ -1157,6 +1164,11 @@ public class PrivacySettingsActivity extends BaseFragment implements Notificatio
+                             value = formatRulesString(getAccountInstance(), ContactsController.PRIVACY_RULES_TYPE_GIFTS);
+                         }
+                         textCell.setTextAndValue(getString(R.string.PrivacyGifts), value, true);
++                    } else if (position == profileCommentsRow) {
++                        final ProfileCommentsController pc = ProfileCommentsController.getInstance(currentAccount);
++                        final ProfileCommentsController.Settings ps = pc.getSettings(pc.selfId());
++                        value = ps.approve ? LocaleController.formatString(R.string.ProfileCommentsPrivacyValueApproval, ProfileCommentsController.whoLabel(ps.who)) : ProfileCommentsController.whoLabel(ps.who);
++                        textCell.setTextAndValue(getString(R.string.ProfileCommentsTitle), value, true);
+                     } else if (position == forwardsRow) {
+                         if (getContactsController().getLoadingPrivacyInfo(ContactsController.PRIVACY_RULES_TYPE_FORWARDS)) {
+                             showLoading = true;
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
+index 1220c6f..d0230ff 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/ProfileActivity.java
+@@ -119,6 +119,7 @@ import androidx.recyclerview.widget.DefaultItemAnimator;
+ import androidx.recyclerview.widget.DiffUtil;
+ import androidx.recyclerview.widget.LinearLayoutManager;
+ 
++import org.telegram.ui.ProfileComments.ProfileCommentsController;
+ import org.telegram.ui.Components.ScrimOptions;
+ import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundProviderImpl;
+ import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceBitmap;
+@@ -8121,6 +8122,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+         } else if (id == SharedMediaLayout.TAB_SAVED_MESSAGES) {
+             int messagesCount = getMessagesController().getSavedMessagesController().getMessagesCount(getDialogId());
+             mediaCounterTextView.setText(LocaleController.formatPluralString("SavedMessagesCount", Math.max(1, messagesCount)));
++        } else if (id == SharedMediaLayout.TAB_PROFILE_COMMENTS) {
++            mediaCounterTextView.setText(LocaleController.formatPluralString("ProfileCommentsCount", sharedMediaLayout.commentsContainer == null ? 0 : sharedMediaLayout.commentsContainer.getApprovedCount()));
+         } else if (id == SharedMediaLayout.TAB_GIFTS) {
+             mediaCounterTextView.setText(LocaleController.formatPluralStringComma("ProfileGiftsCount", sharedMediaLayout.giftsContainer == null ? 0 : sharedMediaLayout.giftsContainer.getGiftsCount()));
+         } else if (id == SharedMediaLayout.TAB_POLL) {
+@@ -10591,6 +10594,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
+         if (!hasMedia && chatInfo != null) {
+             hasMedia = chatInfo.stories_pinned_available;
+         }
++        if (!hasMedia && userId != 0 && (imageUpdater == null || myProfile) && ProfileCommentsController.getInstance(currentAccount).isTabVisible(userId)) {
++            hasMedia = true;
++        }
+         if (!hasMedia) {
+             if (chatId != 0 && MessagesController.ChannelRecommendations.hasRecommendations(currentAccount, -chatId)) {
+                 hasMedia = true;
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileComments/ProfileCommentCell.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileComments/ProfileCommentCell.java
+new file mode 100644
+index 0000000..b6618e8
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/ProfileComments/ProfileCommentCell.java
+@@ -0,0 +1,362 @@
++package org.telegram.ui.ProfileComments;
++
++import static org.telegram.messenger.AndroidUtilities.dp;
++
++import android.annotation.SuppressLint;
++import android.content.Context;
++import android.graphics.Canvas;
++import android.graphics.PorterDuff;
++import android.graphics.PorterDuffColorFilter;
++import android.text.TextUtils;
++import android.util.TypedValue;
++import android.view.GestureDetector;
++import android.view.Gravity;
++import android.view.MotionEvent;
++import android.view.View;
++import android.widget.FrameLayout;
++import android.widget.ImageView;
++import android.widget.LinearLayout;
++import android.widget.TextView;
++
++import org.telegram.messenger.AndroidUtilities;
++import org.telegram.messenger.Emoji;
++import org.telegram.messenger.LocaleController;
++import org.telegram.messenger.MessagesController;
++import org.telegram.messenger.R;
++import org.telegram.messenger.UserObject;
++import org.telegram.tgnet.TLRPC;
++import org.telegram.ui.ActionBar.Theme;
++import org.telegram.ui.Components.AvatarDrawable;
++import org.telegram.ui.Components.BackupImageView;
++import org.telegram.ui.Components.CubicBezierInterpolator;
++import org.telegram.ui.Components.LayoutHelper;
++import org.telegram.ui.Components.ScaleStateListAnimator;
++
++import java.util.ArrayList;
++
++/** One comment on the wall: author, tags, text, reactions and the owner's reply. */
++@SuppressLint("ViewConstructor")
++public class ProfileCommentCell extends FrameLayout {
++
++    public interface Delegate {
++        void onCommentTap(ProfileCommentCell cell, ProfileCommentsController.Comment comment);
++        void onCommentDoubleTap(ProfileCommentCell cell, ProfileCommentsController.Comment comment);
++        void onReactionClick(ProfileCommentCell cell, ProfileCommentsController.Comment comment, String emoji);
++        void onApprove(ProfileCommentsController.Comment comment);
++        void onDismiss(ProfileCommentsController.Comment comment);
++    }
++
++    private final int currentAccount;
++    private final Theme.ResourcesProvider resourcesProvider;
++    private final Delegate delegate;
++    private final GestureDetector gestureDetector;
++
++    private final BackupImageView avatarView;
++    private final AvatarDrawable avatarDrawable;
++    private final TextView nameView;
++    private final ImageView pinView;
++    private final TextView dateView;
++    private final TextView tagsView;
++    private final TextView statusView;
++    private final TextView textView;
++    private final LinearLayout reactionsLayout;
++    private final LinearLayout replyLayout;
++    private final BackupImageView replyAvatarView;
++    private final AvatarDrawable replyAvatarDrawable;
++    private final TextView replyTitleView;
++    private final TextView replyTextView;
++    private final LinearLayout moderationLayout;
++
++    private ProfileCommentsController.Comment comment;
++    private long ownerId;
++    private boolean needDivider;
++    private String bumpEmoji;
++
++    public ProfileCommentCell(Context context, int currentAccount, Theme.ResourcesProvider resourcesProvider, Delegate delegate) {
++        super(context);
++        this.currentAccount = currentAccount;
++        this.resourcesProvider = resourcesProvider;
++        this.delegate = delegate;
++        setWillNotDraw(false);
++
++        avatarDrawable = new AvatarDrawable(resourcesProvider);
++        avatarView = new BackupImageView(context);
++        avatarView.setRoundRadius(dp(20));
++        addView(avatarView, LayoutHelper.createFrame(40, 40, Gravity.LEFT | Gravity.TOP, 16, 12, 0, 0));
++
++        LinearLayout column = new LinearLayout(context);
++        column.setOrientation(LinearLayout.VERTICAL);
++        addView(column, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP, 68, 11, 16, 12));
++
++        LinearLayout top = new LinearLayout(context);
++        top.setOrientation(LinearLayout.HORIZONTAL);
++        top.setGravity(Gravity.CENTER_VERTICAL);
++        column.addView(top, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
++
++        nameView = new TextView(context);
++        nameView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
++        nameView.setTypeface(AndroidUtilities.bold());
++        nameView.setSingleLine();
++        nameView.setEllipsize(TextUtils.TruncateAt.END);
++        top.addView(nameView, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
++
++        pinView = new ImageView(context);
++        pinView.setImageResource(R.drawable.msg_pin);
++        pinView.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
++        top.addView(pinView, LayoutHelper.createLinear(16, 16, Gravity.CENTER_VERTICAL, 6, 0, 3, 0));
++
++        dateView = new TextView(context);
++        dateView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
++        dateView.setSingleLine();
++        top.addView(dateView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 4, 0, 0, 0));
++
++        tagsView = new TextView(context);
++        tagsView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
++        column.addView(tagsView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 2, 0, 0));
++
++        statusView = new TextView(context);
++        statusView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
++        statusView.setTypeface(AndroidUtilities.bold());
++        statusView.setPadding(dp(7), dp(2), dp(7), dp(2));
++        column.addView(statusView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 5, 0, 0));
++
++        textView = new TextView(context);
++        textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
++        textView.setLineSpacing(dp(1.5f), 1f);
++        column.addView(textView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 4, 0, 0));
++
++        reactionsLayout = new LinearLayout(context);
++        reactionsLayout.setOrientation(LinearLayout.HORIZONTAL);
++        column.addView(reactionsLayout, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 0));
++
++        replyLayout = new LinearLayout(context) {
++            @Override
++            protected void dispatchDraw(Canvas canvas) {
++                // accent line on the left, like a quote
++                Theme.dialogs_onlineCirclePaint.setColor(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider));
++                AndroidUtilities.rectTmp.set(0, 0, dp(3), getHeight());
++                canvas.drawRoundRect(AndroidUtilities.rectTmp, dp(1.5f), dp(1.5f), Theme.dialogs_onlineCirclePaint);
++                super.dispatchDraw(canvas);
++            }
++        };
++        replyLayout.setOrientation(LinearLayout.VERTICAL);
++        replyLayout.setPadding(dp(11), dp(7), dp(10), dp(8));
++        column.addView(replyLayout, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 9, 0, 0));
++
++        LinearLayout replyTop = new LinearLayout(context);
++        replyTop.setOrientation(LinearLayout.HORIZONTAL);
++        replyTop.setGravity(Gravity.CENTER_VERTICAL);
++        replyLayout.addView(replyTop, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
++
++        replyAvatarDrawable = new AvatarDrawable(resourcesProvider);
++        replyAvatarDrawable.setTextSize(dp(9));
++        replyAvatarView = new BackupImageView(context);
++        replyAvatarView.setRoundRadius(dp(9));
++        replyTop.addView(replyAvatarView, LayoutHelper.createLinear(18, 18, Gravity.CENTER_VERTICAL, 0, 0, 6, 0));
++
++        replyTitleView = new TextView(context);
++        replyTitleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
++        replyTitleView.setSingleLine();
++        replyTitleView.setEllipsize(TextUtils.TruncateAt.END);
++        replyTop.addView(replyTitleView, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
++
++        replyTextView = new TextView(context);
++        replyTextView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
++        replyLayout.addView(replyTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 3, 0, 0));
++
++        moderationLayout = new LinearLayout(context);
++        moderationLayout.setOrientation(LinearLayout.HORIZONTAL);
++        column.addView(moderationLayout, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 36, 0, 10, 0, 0));
++        moderationLayout.addView(makeModButton(context, true), LayoutHelper.createLinear(0, 36, 1f, 0, 0, 4, 0));
++        moderationLayout.addView(makeModButton(context, false), LayoutHelper.createLinear(0, 36, 1f, 4, 0, 0, 0));
++
++        gestureDetector = new GestureDetector(context, new GestureDetector.SimpleOnGestureListener() {
++            @Override
++            public boolean onDown(MotionEvent e) {
++                return true;
++            }
++
++            @Override
++            public boolean onSingleTapConfirmed(MotionEvent e) {
++                if (comment != null) delegate.onCommentTap(ProfileCommentCell.this, comment);
++                return true;
++            }
++
++            @Override
++            public boolean onDoubleTap(MotionEvent e) {
++                if (comment != null) delegate.onCommentDoubleTap(ProfileCommentCell.this, comment);
++                return true;
++            }
++
++            @Override
++            public void onLongPress(MotionEvent e) {
++                if (comment != null) {
++                    performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
++                    delegate.onCommentTap(ProfileCommentCell.this, comment);
++                }
++            }
++        });
++
++        updateColors();
++    }
++
++    private TextView makeModButton(Context context, boolean approve) {
++        TextView b = new TextView(context);
++        b.setTag(approve);
++        b.setGravity(Gravity.CENTER);
++        b.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
++        b.setTypeface(AndroidUtilities.bold());
++        b.setText(LocaleController.getString(approve ? R.string.ProfileCommentsApprove : R.string.ProfileCommentsDismiss));
++        b.setOnClickListener(v -> {
++            if (comment == null) return;
++            if (approve) delegate.onApprove(comment);
++            else delegate.onDismiss(comment);
++        });
++        ScaleStateListAnimator.apply(b, .04f, 1.4f);
++        return b;
++    }
++
++    private void updateColors() {
++        final int black = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
++        final int gray = Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider);
++        final int accent = Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider);
++        nameView.setTextColor(black);
++        dateView.setTextColor(gray);
++        pinView.setColorFilter(new PorterDuffColorFilter(accent, PorterDuff.Mode.SRC_IN));
++        tagsView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText, resourcesProvider));
++        textView.setTextColor(black);
++        textView.setLinkTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteLinkText, resourcesProvider));
++        replyLayout.setBackground(Theme.createRoundRectDrawable(dp(6), Theme.multAlpha(accent, .08f)));
++        replyTitleView.setTextColor(accent);
++        replyTextView.setTextColor(black);
++        for (int i = 0; i < moderationLayout.getChildCount(); i++) {
++            TextView b = (TextView) moderationLayout.getChildAt(i);
++            boolean approve = (Boolean) b.getTag();
++            int color = approve ? accent : Theme.getColor(Theme.key_text_RedRegular, resourcesProvider);
++            b.setTextColor(approve ? Theme.getColor(Theme.key_featuredStickers_buttonText, resourcesProvider) : color);
++            b.setBackground(Theme.createSimpleSelectorRoundRectDrawable(dp(8), approve ? accent : Theme.multAlpha(color, .10f), Theme.multAlpha(approve ? 0xFFFFFFFF : color, .2f)));
++        }
++    }
++
++    public ProfileCommentsController.Comment getComment() {
++        return comment;
++    }
++
++    /** Next bind animates the pill for this reaction. */
++    public void bumpReaction(String emoji) {
++        bumpEmoji = emoji;
++    }
++
++    public void set(long ownerId, ProfileCommentsController.Comment c, boolean pendingSection, boolean divider) {
++        final ProfileCommentsController controller = ProfileCommentsController.getInstance(currentAccount);
++        final boolean ownerView = controller.isOwner(ownerId);
++        this.ownerId = ownerId;
++        this.comment = c;
++        this.needDivider = divider;
++
++        // author
++        TLRPC.User author = MessagesController.getInstance(currentAccount).getUser(c.authorId);
++        if (author != null) {
++            avatarDrawable.setInfo(currentAccount, author);
++            avatarView.setForUserOrChat(author, avatarDrawable);
++        } else {
++            String name = controller.getAuthorName(c);
++            int space = name.indexOf(' ');
++            avatarDrawable.setInfo(Math.abs(c.authorId), space > 0 ? name.substring(0, space) : name, space > 0 ? name.substring(space + 1) : null);
++            avatarView.setImageDrawable(avatarDrawable);
++        }
++        nameView.setText(Emoji.replaceEmoji(controller.isMine(c) && !ownerView ? LocaleController.getString(R.string.ProfileCommentsYou) : controller.getAuthorName(c), nameView.getPaint().getFontMetricsInt(), false));
++        dateView.setText(ProfileCommentsController.formatAgo(c.date));
++        pinView.setVisibility(c.pinned && c.status == ProfileCommentsController.STATUS_APPROVED ? VISIBLE : GONE);
++
++        CharSequence tags = ProfileCommentsController.tagLine(c);
++        tagsView.setVisibility(tags.length() > 0 ? VISIBLE : GONE);
++        tagsView.setText(Emoji.replaceEmoji(tags, tagsView.getPaint().getFontMetricsInt(), false));
++
++        // status chip
++        CharSequence status = null;
++        int statusColor = 0;
++        if (c.status == ProfileCommentsController.STATUS_PENDING && !pendingSection) {
++            status = LocaleController.getString(R.string.ProfileCommentsAwaiting);
++            statusColor = Theme.getColor(Theme.key_color_orange, resourcesProvider);
++        } else if (c.status == ProfileCommentsController.STATUS_HIDDEN) {
++            status = LocaleController.getString(R.string.ProfileCommentsHiddenLabel);
++            statusColor = Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider);
++        } else if (ownerView && !c.reports.isEmpty()) {
++            status = LocaleController.formatPluralString("ProfileCommentsReports", c.reports.size());
++            statusColor = Theme.getColor(Theme.key_text_RedRegular, resourcesProvider);
++        }
++        statusView.setVisibility(status != null ? VISIBLE : GONE);
++        if (status != null) {
++            statusView.setText(status);
++            statusView.setTextColor(statusColor);
++            statusView.setBackground(Theme.createRoundRectDrawable(dp(6), Theme.multAlpha(statusColor, .12f)));
++        }
++
++        textView.setText(Emoji.replaceEmoji(c.text, textView.getPaint().getFontMetricsInt(), false));
++        float dim = c.status == ProfileCommentsController.STATUS_APPROVED || pendingSection ? 1f : .55f;
++        textView.setAlpha(dim);
++        tagsView.setAlpha(dim);
++        avatarView.setAlpha(dim);
++
++        bindReactions(controller, c);
++
++        // owner reply
++        replyLayout.setVisibility(c.hasReply() ? VISIBLE : GONE);
++        if (c.hasReply()) {
++            TLRPC.User owner = MessagesController.getInstance(currentAccount).getUser(ownerId);
++            replyAvatarDrawable.setInfo(currentAccount, owner);
++            replyAvatarView.setForUserOrChat(owner, replyAvatarDrawable);
++            String ownerName = owner != null ? UserObject.getUserName(owner) : "";
++            replyTitleView.setText(Emoji.replaceEmoji(LocaleController.formatString(R.string.ProfileCommentsReplyTitle, ownerName, ProfileCommentsController.formatAgo(c.replyDate)), replyTitleView.getPaint().getFontMetricsInt(), false));
++            replyTextView.setText(Emoji.replaceEmoji(c.replyText, replyTextView.getPaint().getFontMetricsInt(), false));
++        }
++
++        moderationLayout.setVisibility(pendingSection ? VISIBLE : GONE);
++        setContentDescription(controller.getAuthorName(c) + ", " + ProfileCommentsController.formatAgo(c.date) + ": " + c.text);
++        requestLayout();
++    }
++
++    private void bindReactions(ProfileCommentsController controller, ProfileCommentsController.Comment c) {
++        reactionsLayout.removeAllViews();
++        ArrayList<String> sorted = c.status == ProfileCommentsController.STATUS_APPROVED ? c.sortedReactions() : new ArrayList<>();
++        reactionsLayout.setVisibility(sorted.isEmpty() ? GONE : VISIBLE);
++        final int accent = Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider);
++        for (String emoji : sorted) {
++            final boolean mine = controller.hasMyReaction(c, emoji);
++            TextView pill = new TextView(getContext());
++            pill.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
++            pill.setTypeface(AndroidUtilities.bold());
++            pill.setGravity(Gravity.CENTER);
++            pill.setPadding(dp(8), 0, dp(9), 0);
++            pill.setTextColor(mine ? Theme.getColor(Theme.key_featuredStickers_buttonText, resourcesProvider) : accent);
++            pill.setBackground(Theme.createRoundRectDrawable(dp(14), mine ? accent : Theme.multAlpha(accent, .10f)));
++            pill.setText(Emoji.replaceEmoji(emoji + " " + c.reactionCount(emoji), pill.getPaint().getFontMetricsInt(), false));
++            pill.setContentDescription(emoji + " " + c.reactionCount(emoji));
++            pill.setOnClickListener(v -> delegate.onReactionClick(this, c, emoji));
++            ScaleStateListAnimator.apply(pill, .1f, 1.5f);
++            reactionsLayout.addView(pill, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, 28, 0, 0, 6, 0));
++            if (emoji.equals(bumpEmoji)) {
++                pill.setScaleX(.6f);
++                pill.setScaleY(.6f);
++                pill.animate().scaleX(1f).scaleY(1f).setDuration(380).setInterpolator(CubicBezierInterpolator.EASE_OUT_BACK).start();
++            }
++        }
++        bumpEmoji = null;
++    }
++
++    @Override
++    public boolean onTouchEvent(MotionEvent event) {
++        gestureDetector.onTouchEvent(event);
++        return true;
++    }
++
++    @Override
++    protected void onDraw(Canvas canvas) {
++        super.onDraw(canvas);
++        if (needDivider) {
++            android.graphics.Paint dividerPaint = Theme.getThemePaint(Theme.key_paint_divider, resourcesProvider);
++            canvas.drawRect(dp(68), getHeight() - 1, getWidth(), getHeight(), dividerPaint);
++        }
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileComments/ProfileCommentSheet.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileComments/ProfileCommentSheet.java
+new file mode 100644
+index 0000000..508075d
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/ProfileComments/ProfileCommentSheet.java
+@@ -0,0 +1,357 @@
++package org.telegram.ui.ProfileComments;
++
++import static org.telegram.messenger.AndroidUtilities.dp;
++import static org.telegram.messenger.LocaleController.formatString;
++import static org.telegram.messenger.LocaleController.getString;
++
++import android.content.Context;
++import android.text.Editable;
++import android.text.InputFilter;
++import android.text.InputType;
++import android.text.TextUtils;
++import android.text.TextWatcher;
++import android.util.TypedValue;
++import android.view.Gravity;
++import android.view.View;
++import android.view.ViewGroup;
++import android.view.inputmethod.EditorInfo;
++import android.widget.FrameLayout;
++import android.widget.ImageView;
++import android.widget.LinearLayout;
++import android.widget.TextView;
++
++import org.telegram.messenger.AndroidUtilities;
++import org.telegram.messenger.Emoji;
++import org.telegram.messenger.MessagesController;
++import org.telegram.messenger.R;
++import org.telegram.messenger.UserConfig;
++import org.telegram.tgnet.TLRPC;
++import org.telegram.ui.ActionBar.BottomSheet;
++import org.telegram.ui.ActionBar.Theme;
++import org.telegram.ui.Components.AvatarDrawable;
++import org.telegram.ui.Components.BackupImageView;
++import org.telegram.ui.Components.EditTextBoldCursor;
++import org.telegram.ui.Components.LayoutHelper;
++import org.telegram.ui.Components.OutlineTextContainerView;
++import org.telegram.ui.Components.ScaleStateListAnimator;
++import org.telegram.ui.Stories.recorder.ButtonWithCounterView;
++
++import java.util.ArrayList;
++
++/**
++ * Bottom sheet used for both writing a comment (visitor) and replying to one (owner).
++ */
++public class ProfileCommentSheet extends BottomSheet {
++
++    public interface Callback {
++        /** Called with the trimmed text and selected tag ids. Return false to keep the sheet open. */
++        boolean onDone(String text, ArrayList<String> tags);
++    }
++
++    private final int currentAccount;
++    private final boolean replyMode;
++    private final ArrayList<String> selectedTags = new ArrayList<>();
++    private final FlowLayout tagsLayout;
++    private final EditTextBoldCursor editText;
++    private final TextView counterView;
++    private final TextView errorView;
++    private final ButtonWithCounterView button;
++    private final Callback callback;
++
++    /**
++     * @param ownerId   profile owner
++     * @param replyTo   null to write a new comment, otherwise the comment the owner replies to
++     * @param onMessage opens a private chat with the owner (comment mode only)
++     */
++    public ProfileCommentSheet(Context context, int currentAccount, long ownerId, ProfileCommentsController.Comment replyTo,
++                               Theme.ResourcesProvider resourcesProvider, Runnable onMessage, Callback callback) {
++        super(context, true, resourcesProvider);
++        this.currentAccount = currentAccount;
++        this.replyMode = replyTo != null;
++        this.callback = callback;
++        smoothKeyboardAnimationEnabled = true;
++        fixNavigationBar(Theme.getColor(Theme.key_dialogBackground, resourcesProvider));
++
++        final ProfileCommentsController controller = ProfileCommentsController.getInstance(currentAccount);
++        final String ownerFirst = controller.getOwnerFirstName(ownerId);
++        final int black = Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider);
++        final int gray = Theme.getColor(Theme.key_dialogTextGray2, resourcesProvider);
++        final int accent = Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider);
++
++        LinearLayout layout = new LinearLayout(context);
++        layout.setOrientation(LinearLayout.VERTICAL);
++        layout.setPadding(0, dp(4), 0, 0);
++
++        // ---- header: avatar + title + subtitle
++        LinearLayout header = new LinearLayout(context);
++        header.setOrientation(LinearLayout.HORIZONTAL);
++        header.setGravity(Gravity.CENTER_VERTICAL);
++        layout.addView(header, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 20, 10, 20, 14));
++
++        BackupImageView avatar = new BackupImageView(context);
++        avatar.setRoundRadius(dp(20));
++        AvatarDrawable avatarDrawable = new AvatarDrawable(resourcesProvider);
++        // comment: the writer (you). reply: the owner (also you).
++        TLRPC.User me = UserConfig.getInstance(currentAccount).getCurrentUser();
++        avatarDrawable.setInfo(currentAccount, me);
++        avatar.setForUserOrChat(me, avatarDrawable);
++        header.addView(avatar, LayoutHelper.createLinear(40, 40, Gravity.CENTER_VERTICAL, 0, 0, 12, 0));
++
++        LinearLayout titles = new LinearLayout(context);
++        titles.setOrientation(LinearLayout.VERTICAL);
++        header.addView(titles, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
++
++        TextView title = new TextView(context);
++        title.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 18);
++        title.setTypeface(AndroidUtilities.bold());
++        title.setTextColor(black);
++        title.setMaxLines(2);
++        title.setEllipsize(TextUtils.TruncateAt.END);
++        titles.addView(title);
++
++        TextView subtitle = new TextView(context);
++        subtitle.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
++        subtitle.setTextColor(gray);
++        subtitle.setMaxLines(2);
++        subtitle.setEllipsize(TextUtils.TruncateAt.END);
++        titles.addView(subtitle, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 2, 0, 0));
++
++        final String fieldLabel;
++        final String hint;
++        if (replyMode) {
++            String author = controller.getAuthorFirstName(replyTo);
++            title.setText(Emoji.replaceEmoji(formatString(replyTo.hasReply() ? R.string.ProfileCommentsEditReplyTo : R.string.ProfileCommentsReplyTo, author), title.getPaint().getFontMetricsInt(), false));
++            String quote = replyTo.text.length() > 70 ? replyTo.text.substring(0, 70) + "…" : replyTo.text;
++            subtitle.setText(Emoji.replaceEmoji("“" + quote + "”", subtitle.getPaint().getFontMetricsInt(), false));
++            fieldLabel = getString(R.string.ProfileCommentsReplyField);
++            hint = formatString(R.string.ProfileCommentsReplyHint, author);
++        } else {
++            title.setText(Emoji.replaceEmoji(formatString(R.string.ProfileCommentsSheetTitle, ownerFirst), title.getPaint().getFontMetricsInt(), false));
++            subtitle.setText(controller.getSettings(ownerId).approve ? formatString(R.string.ProfileCommentsSheetSubApproval, ownerFirst) : getString(R.string.ProfileCommentsSheetSubPublic));
++            fieldLabel = getString(R.string.ProfileCommentsSheetField);
++            hint = formatString(R.string.ProfileCommentsSheetHint, ownerFirst);
++        }
++
++        // ---- tags (comment mode only)
++        tagsLayout = new FlowLayout(context, dp(8), dp(8));
++        if (!replyMode) {
++            TextView tagsLabel = new TextView(context);
++            tagsLabel.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
++            tagsLabel.setTypeface(AndroidUtilities.bold());
++            tagsLabel.setTextColor(black);
++            tagsLabel.setText(formatString(R.string.ProfileCommentsSheetTags, ownerFirst));
++            layout.addView(tagsLabel, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 20, 0, 20, 10));
++            layout.addView(tagsLayout, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 20, 0, 20, 16));
++            for (ProfileCommentsController.Tag tag : ProfileCommentsController.TAGS) {
++                TextView chip = new TextView(context);
++                chip.setTag(tag.id);
++                chip.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
++                chip.setGravity(Gravity.CENTER_VERTICAL);
++                chip.setPadding(dp(12), 0, dp(12), 0);
++                chip.setText(Emoji.replaceEmoji(tag.emoji + "  " + getString(tag.titleRes), chip.getPaint().getFontMetricsInt(), false));
++                chip.setOnClickListener(v -> {
++                    if (selectedTags.contains(tag.id)) {
++                        selectedTags.remove(tag.id);
++                    } else if (selectedTags.size() < ProfileCommentsController.MAX_TAGS) {
++                        selectedTags.add(tag.id);
++                    } else {
++                        AndroidUtilities.shakeViewSpring(v, 3);
++                        return;
++                    }
++                    updateChips();
++                });
++                ScaleStateListAnimator.apply(chip, .05f, 1.4f);
++                tagsLayout.addView(chip, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34)));
++            }
++            updateChips();
++        }
++
++        // ---- text field
++        OutlineTextContainerView outline = new OutlineTextContainerView(context, resourcesProvider);
++        outline.setText(fieldLabel);
++        editText = new EditTextBoldCursor(context);
++        editText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
++        editText.setTextColor(black);
++        editText.setHintColor(Theme.getColor(Theme.key_windowBackgroundWhiteHintText, resourcesProvider));
++        editText.setHintText(hint);
++        editText.setCursorColor(accent);
++        editText.setCursorSize(dp(20));
++        editText.setCursorWidth(1.5f);
++        editText.setBackground(null);
++        editText.setGravity(Gravity.TOP | Gravity.LEFT);
++        editText.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
++        editText.setImeOptions(EditorInfo.IME_FLAG_NO_EXTRACT_UI);
++        editText.setMinLines(3);
++        editText.setMaxLines(6);
++        editText.setFilters(new InputFilter[]{new InputFilter.LengthFilter(ProfileCommentsController.MAX_LENGTH)});
++        editText.setPadding(dp(16), dp(16), dp(16), dp(26));
++        outline.attachEditText(editText);
++        outline.addView(editText, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP));
++        editText.setOnFocusChangeListener((v, hasFocus) -> outline.animateSelection(hasFocus, !TextUtils.isEmpty(editText.getText())));
++
++        counterView = new TextView(context);
++        counterView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
++        counterView.setTextColor(gray);
++        outline.addView(counterView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.RIGHT | Gravity.BOTTOM, 0, 0, 12, 8));
++        layout.addView(outline, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 16, 0, 16, 0));
++
++        if (replyMode && replyTo.hasReply()) {
++            editText.setText(replyTo.replyText);
++            editText.setSelection(editText.length());
++            outline.animateSelection(true, true, false);
++        }
++
++        // ---- note
++        LinearLayout note = new LinearLayout(context);
++        note.setOrientation(LinearLayout.HORIZONTAL);
++        layout.addView(note, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 20, 12, 20, 0));
++        ImageView noteIcon = new ImageView(context);
++        noteIcon.setImageResource(replyMode ? R.drawable.msg_mini_lock3 : R.drawable.msg_recent);
++        noteIcon.setColorFilter(new android.graphics.PorterDuffColorFilter(gray, android.graphics.PorterDuff.Mode.SRC_IN));
++        noteIcon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
++        note.addView(noteIcon, LayoutHelper.createLinear(18, 18, Gravity.TOP, 0, 1, 8, 0));
++        TextView noteText = new TextView(context);
++        noteText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
++        noteText.setTextColor(gray);
++        noteText.setLinkTextColor(accent);
++        if (replyMode) {
++            noteText.setText(formatString(R.string.ProfileCommentsReplyNote, controller.getAuthorFirstName(replyTo)));
++        } else {
++            noteText.setText(AndroidUtilities.replaceSingleTag(
++                formatString(R.string.ProfileCommentsSheetNote, ownerFirst),
++                -1, AndroidUtilities.REPLACING_TAG_TYPE_LINKBOLD, () -> {
++                    dismiss();
++                    if (onMessage != null) onMessage.run();
++                }, resourcesProvider));
++            noteText.setMovementMethod(new AndroidUtilities.LinkMovementMethodMy());
++        }
++        note.addView(noteText, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
++
++        errorView = new TextView(context);
++        errorView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
++        errorView.setTextColor(Theme.getColor(Theme.key_text_RedRegular, resourcesProvider));
++        errorView.setVisibility(View.GONE);
++        layout.addView(errorView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 20, 8, 20, 0));
++
++        // ---- button
++        button = new ButtonWithCounterView(context, resourcesProvider).setRound();
++        button.setText(getString(replyMode ? R.string.ProfileCommentsReplyPost : R.string.ProfileCommentsSheetPost), false);
++        button.setOnClickListener(v -> submit());
++        layout.addView(button, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, 16, 16, 16, 8));
++
++        editText.addTextChangedListener(new TextWatcher() {
++            @Override
++            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
++
++            @Override
++            public void onTextChanged(CharSequence s, int start, int before, int count) {}
++
++            @Override
++            public void afterTextChanged(Editable s) {
++                updateCounter();
++            }
++        });
++        updateCounter();
++
++        setCustomView(layout);
++    }
++
++    private void updateChips() {
++        final boolean full = selectedTags.size() >= ProfileCommentsController.MAX_TAGS;
++        final int accent = Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider);
++        final int text = Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider);
++        final int gray = Theme.getColor(Theme.key_dialogTextGray2, resourcesProvider);
++        for (int i = 0; i < tagsLayout.getChildCount(); i++) {
++            TextView chip = (TextView) tagsLayout.getChildAt(i);
++            boolean on = selectedTags.contains((String) chip.getTag());
++            chip.setTextColor(on ? accent : text);
++            chip.setTypeface(on ? AndroidUtilities.bold() : null);
++            chip.setBackground(Theme.createRoundRectDrawable(dp(17), on ? Theme.multAlpha(accent, .14f) : Theme.multAlpha(gray, .12f)));
++            chip.setAlpha(!on && full ? .45f : 1f);
++            chip.setSelected(on);
++        }
++    }
++
++    private void updateCounter() {
++        int len = editText.length();
++        int left = ProfileCommentsController.MAX_LENGTH - len;
++        counterView.setText(String.valueOf(left));
++        counterView.setTextColor(left < 20 ? Theme.getColor(Theme.key_text_RedRegular, resourcesProvider) : Theme.getColor(Theme.key_dialogTextGray2, resourcesProvider));
++        boolean enabled = editText.getText().toString().trim().length() >= ProfileCommentsController.MIN_LENGTH || replyMode;
++        button.setEnabled(enabled);
++        button.setAlpha(enabled ? 1f : .5f);
++        errorView.setVisibility(View.GONE);
++    }
++
++    private void submit() {
++        String text = editText.getText().toString().trim();
++        if (!replyMode && text.length() < ProfileCommentsController.MIN_LENGTH) {
++            AndroidUtilities.shakeViewSpring(editText, 4);
++            return;
++        }
++        if (callback.onDone(text, new ArrayList<>(selectedTags))) {
++            AndroidUtilities.hideKeyboard(editText);
++            dismiss();
++        }
++    }
++
++    public void showError(CharSequence error) {
++        errorView.setText(error);
++        errorView.setVisibility(View.VISIBLE);
++    }
++
++    @Override
++    public void show() {
++        super.show();
++        AndroidUtilities.runOnUIThread(() -> {
++            editText.requestFocus();
++            AndroidUtilities.showKeyboard(editText);
++        }, 250);
++    }
++
++    /** Wraps children onto new lines, used for the tag chips. */
++    private static class FlowLayout extends FrameLayout {
++        private final int hGap, vGap;
++
++        FlowLayout(Context context, int hGap, int vGap) {
++            super(context);
++            this.hGap = hGap;
++            this.vGap = vGap;
++        }
++
++        @Override
++        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
++            final int width = MeasureSpec.getSize(widthMeasureSpec);
++            int x = 0, y = 0, rowHeight = 0;
++            for (int i = 0; i < getChildCount(); i++) {
++                View child = getChildAt(i);
++                child.measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(child.getLayoutParams().height, MeasureSpec.EXACTLY));
++                if (x > 0 && x + child.getMeasuredWidth() > width) {
++                    x = 0;
++                    y += rowHeight + vGap;
++                    rowHeight = 0;
++                }
++                x += child.getMeasuredWidth() + hGap;
++                rowHeight = Math.max(rowHeight, child.getMeasuredHeight());
++            }
++            setMeasuredDimension(width, y + rowHeight);
++        }
++
++        @Override
++        protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
++            final int width = right - left;
++            int x = 0, y = 0, rowHeight = 0;
++            for (int i = 0; i < getChildCount(); i++) {
++                View child = getChildAt(i);
++                if (x > 0 && x + child.getMeasuredWidth() > width) {
++                    x = 0;
++                    y += rowHeight + vGap;
++                    rowHeight = 0;
++                }
++                child.layout(x, y, x + child.getMeasuredWidth(), y + child.getMeasuredHeight());
++                x += child.getMeasuredWidth() + hGap;
++                rowHeight = Math.max(rowHeight, child.getMeasuredHeight());
++            }
++        }
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileComments/ProfileCommentsContainer.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileComments/ProfileCommentsContainer.java
+new file mode 100644
+index 0000000..efc0049
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/ProfileComments/ProfileCommentsContainer.java
+@@ -0,0 +1,725 @@
++package org.telegram.ui.ProfileComments;
++
++import static org.telegram.messenger.AndroidUtilities.dp;
++import static org.telegram.messenger.LocaleController.formatPluralString;
++import static org.telegram.messenger.LocaleController.formatString;
++import static org.telegram.messenger.LocaleController.getString;
++
++import android.annotation.SuppressLint;
++import android.content.Context;
++import android.graphics.drawable.GradientDrawable;
++import android.text.SpannableStringBuilder;
++import android.text.Spanned;
++import android.text.TextUtils;
++import android.text.style.ForegroundColorSpan;
++import android.util.TypedValue;
++import android.view.Gravity;
++import android.view.HapticFeedbackConstants;
++import android.view.View;
++import android.view.ViewGroup;
++import android.widget.FrameLayout;
++import android.widget.HorizontalScrollView;
++import android.widget.ImageView;
++import android.widget.LinearLayout;
++import android.widget.TextView;
++
++import androidx.annotation.NonNull;
++import androidx.recyclerview.widget.DefaultItemAnimator;
++import androidx.recyclerview.widget.DiffUtil;
++import androidx.recyclerview.widget.LinearLayoutManager;
++import androidx.recyclerview.widget.RecyclerView;
++
++import org.telegram.messenger.AndroidUtilities;
++import org.telegram.messenger.Emoji;
++import org.telegram.messenger.MessagesController;
++import org.telegram.messenger.R;
++import org.telegram.tgnet.TLRPC;
++import org.telegram.ui.ActionBar.BaseFragment;
++import org.telegram.ui.ActionBar.Theme;
++import org.telegram.ui.ChatActivity;
++import org.telegram.ui.Components.BulletinFactory;
++import org.telegram.ui.Components.CubicBezierInterpolator;
++import org.telegram.ui.Components.ItemOptions;
++import org.telegram.ui.Components.LayoutHelper;
++import org.telegram.ui.Components.RecyclerListView;
++import org.telegram.ui.Components.ScaleStateListAnimator;
++import org.telegram.ui.Stories.recorder.ButtonWithCounterView;
++
++import java.util.ArrayList;
++import java.util.Map;
++import java.util.Objects;
++
++/**
++ * Content of the "Comments" tab on a profile (lives inside SharedMediaLayout, next to Posts and Gifts).
++ * The owner and visitors get different layouts automatically.
++ */
++@SuppressLint("ViewConstructor")
++public class ProfileCommentsContainer extends FrameLayout implements ProfileCommentsController.Listener, ProfileCommentCell.Delegate {
++
++    private static final int TYPE_FILTERS = 0;
++    private static final int TYPE_PENDING_HEADER = 1;
++    private static final int TYPE_COMMENT = 2;
++    private static final int TYPE_LIST_HEADER = 3;
++    private static final int TYPE_EMPTY = 4;
++    private static final int TYPE_FOOTER = 5;
++    private static final int TYPE_GAP = 6;
++    private static final int TYPE_BOTTOM_SPACE = 7;
++
++    private final BaseFragment fragment;
++    private final int currentAccount;
++    private final long ownerId;
++    private final Theme.ResourcesProvider resourcesProvider;
++    private final ProfileCommentsController controller;
++
++    private final RecyclerListView listView;
++    private final LinearLayoutManager layoutManager;
++    private final Adapter adapter;
++    private final FrameLayout buttonContainer;
++    private final ButtonWithCounterView button;
++
++    private final ArrayList<Item> items = new ArrayList<>();
++    private String tagFilter;
++    private int externalPaddingTop;
++    private int visibleHeight = AndroidUtilities.displaySize.y;
++    private String bumpKey;
++
++    public ProfileCommentsContainer(BaseFragment fragment, Context context, int currentAccount, long ownerId, Theme.ResourcesProvider resourcesProvider) {
++        super(context);
++        this.fragment = fragment;
++        this.currentAccount = currentAccount;
++        this.ownerId = ownerId;
++        this.resourcesProvider = resourcesProvider;
++        this.controller = ProfileCommentsController.getInstance(currentAccount);
++
++        listView = new RecyclerListView(context, resourcesProvider);
++        listView.setLayoutManager(layoutManager = new LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false));
++        listView.setAdapter(adapter = new Adapter());
++        listView.setClipToPadding(false);
++        listView.setSelectorType(9);
++        listView.setSelectorDrawableColor(0);
++        DefaultItemAnimator itemAnimator = new DefaultItemAnimator();
++        itemAnimator.setSupportsChangeAnimations(false);
++        itemAnimator.setDelayAnimations(false);
++        itemAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
++        itemAnimator.setDurations(350);
++        listView.setItemAnimator(itemAnimator);
++        listView.setPadding(0, externalPaddingTop, 0, 0);
++        addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
++
++        // "Leave a comment" floats at the bottom of the visible part of the profile (visitors only).
++        buttonContainer = new FrameLayout(context);
++        GradientDrawable fade = new GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, new int[]{
++            Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider),
++            Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider),
++            Theme.multAlpha(Theme.getColor(Theme.key_windowBackgroundWhite, resourcesProvider), 0f)
++        });
++        buttonContainer.setBackground(fade);
++        button = new ButtonWithCounterView(context, resourcesProvider).setRound();
++        button.setOnClickListener(v -> onLeaveClick());
++        buttonContainer.addView(button, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.BOTTOM, 16, 0, 16, 10));
++        FrameLayout.LayoutParams lp = LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 76, Gravity.BOTTOM);
++        lp.bottomMargin = AndroidUtilities.navigationBarHeight;
++        addView(buttonContainer, lp);
++
++        update(false);
++    }
++
++    // ------------------------------------------------------------------ host API (SharedMediaLayout)
++
++    public RecyclerListView getCurrentListView() {
++        return listView;
++    }
++
++    public void setPaddingTop(int paddingTop) {
++        if (externalPaddingTop == paddingTop) return;
++        final int old = listView.getPaddingTop();
++        externalPaddingTop = paddingTop;
++        listView.setPadding(0, paddingTop, 0, 0);
++        final int scroll = old - paddingTop;
++        AndroidUtilities.doOnLayout(listView, () -> listView.scrollBy(0, scroll));
++    }
++
++    public void setVisibleHeight(int height) {
++        visibleHeight = height;
++        updateButtonPosition();
++    }
++
++    public boolean canScroll(boolean forward) {
++        return true;
++    }
++
++    public int getApprovedCount() {
++        return controller.approvedCount(ownerId);
++    }
++
++    @Override
++    protected void onAttachedToWindow() {
++        super.onAttachedToWindow();
++        controller.addListener(this);
++        update(false);
++    }
++
++    @Override
++    protected void onDetachedFromWindow() {
++        super.onDetachedFromWindow();
++        controller.removeListener(this);
++    }
++
++    @Override
++    public void onProfileCommentsUpdated(long ownerId) {
++        if (ownerId == this.ownerId) update(true);
++    }
++
++    @Override
++    protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
++        super.onLayout(changed, left, top, right, bottom);
++        updateButtonPosition();
++    }
++
++    // ------------------------------------------------------------------ items
++
++    private static final class Item {
++        final int type;
++        final long stableId;
++        final int contentHash;
++        final ProfileCommentsController.Comment comment;
++        final boolean pending;
++        final boolean divider;
++
++        Item(int type, long stableId, int contentHash, ProfileCommentsController.Comment comment, boolean pending, boolean divider) {
++            this.type = type;
++            this.stableId = stableId;
++            this.contentHash = contentHash;
++            this.comment = comment;
++            this.pending = pending;
++            this.divider = divider;
++        }
++    }
++
++    private static int hashOf(ProfileCommentsController.Comment c) {
++        int reactions = 0;
++        for (Map.Entry<String, java.util.HashSet<Long>> e : c.reactions.entrySet()) {
++            reactions = reactions * 31 + e.getKey().hashCode() * 7 + e.getValue().hashCode();
++        }
++        return Objects.hash(c.text, c.status, c.pinned, c.replyText, c.tags, reactions, c.reports.size(), ProfileCommentsController.formatAgo(c.date));
++    }
++
++    public void update(boolean animated) {
++        final boolean owner = controller.isOwner(ownerId);
++        final ProfileCommentsController.Settings settings = controller.getSettings(ownerId);
++        final int approved = controller.approvedCount(ownerId);
++        final Map<String, Integer> tagCounts = controller.getTagCounts(ownerId);
++        if (tagFilter != null && !tagCounts.containsKey(tagFilter)) tagFilter = null;
++
++        final ArrayList<Item> old = new ArrayList<>(items);
++        items.clear();
++
++        if (approved > 0) {
++            items.add(new Item(TYPE_FILTERS, 1, Objects.hash(tagCounts, tagFilter, approved), null, false, false));
++        }
++
++        ArrayList<ProfileCommentsController.Comment> pending = controller.getPending(ownerId);
++        if (!pending.isEmpty()) {
++            items.add(new Item(TYPE_PENDING_HEADER, 2, pending.size(), null, false, false));
++            for (int i = 0; i < pending.size(); i++) {
++                ProfileCommentsController.Comment c = pending.get(i);
++                items.add(new Item(TYPE_COMMENT, 1_000_000_000L + c.id, hashOf(c), c, true, i < pending.size() - 1));
++            }
++            items.add(new Item(TYPE_GAP, 3, 0, null, false, false));
++        }
++
++        items.add(new Item(TYPE_LIST_HEADER, 4, Objects.hash(approved, settings.who, settings.approve, owner), null, false, false));
++        ArrayList<ProfileCommentsController.Comment> visible = controller.getVisible(ownerId, tagFilter);
++        if (visible.isEmpty()) {
++            items.add(new Item(TYPE_EMPTY, 5, settings.who, null, false, false));
++        } else {
++            for (int i = 0; i < visible.size(); i++) {
++                ProfileCommentsController.Comment c = visible.get(i);
++                items.add(new Item(TYPE_COMMENT, 2_000_000_000L + c.id, hashOf(c), c, false, i < visible.size() - 1));
++            }
++        }
++        items.add(new Item(TYPE_FOOTER, 6, settings.who, null, false, false));
++        items.add(new Item(TYPE_BOTTOM_SPACE, 7, owner ? 0 : 1, null, false, false));
++
++        if (animated && isAttachedToWindow()) {
++            DiffUtil.calculateDiff(new DiffUtil.Callback() {
++                @Override
++                public int getOldListSize() {
++                    return old.size();
++                }
++
++                @Override
++                public int getNewListSize() {
++                    return items.size();
++                }
++
++                @Override
++                public boolean areItemsTheSame(int o, int n) {
++                    return old.get(o).stableId == items.get(n).stableId;
++                }
++
++                @Override
++                public boolean areContentsTheSame(int o, int n) {
++                    Item a = old.get(o), b = items.get(n);
++                    return a.contentHash == b.contentHash && a.divider == b.divider && bumpKey == null;
++                }
++            }).dispatchUpdatesTo(adapter);
++        } else {
++            adapter.notifyDataSetChanged();
++        }
++        updateButton();
++    }
++
++    // ------------------------------------------------------------------ bottom button
++
++    private void updateButton() {
++        final boolean owner = controller.isOwner(ownerId);
++        buttonContainer.setVisibility(owner ? GONE : VISIBLE);
++        if (owner) return;
++        ProfileCommentsController.LeaveState state = controller.getLeaveState(ownerId);
++        SpannableStringBuilder text = new SpannableStringBuilder();
++        if (state.allowed) {
++            text.append("+ ");
++            text.setSpan(new org.telegram.ui.Components.ColoredImageSpan(R.drawable.msg_edit), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++        }
++        text.append(state.text);
++        button.setText(text, true);
++        button.setAlpha(state.allowed ? 1f : .55f);
++        updateButtonPosition();
++    }
++
++    private void updateButtonPosition() {
++        if (buttonContainer.getVisibility() == GONE) return;
++        float ty = -buttonContainer.getTop() + visibleHeight - buttonContainer.getMeasuredHeight();
++        boolean show = visibleHeight > dp(184);
++        buttonContainer.setTranslationY(ty + (show ? 0 : dp(80)));
++        buttonContainer.setAlpha(show ? 1f : 0f);
++    }
++
++    private void onLeaveClick() {
++        ProfileCommentsController.LeaveState state = controller.getLeaveState(ownerId);
++        if (!state.allowed) {
++            AndroidUtilities.shakeViewSpring(button, 3);
++            BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, state.text).show();
++            return;
++        }
++        final ProfileCommentSheet[] sheet = new ProfileCommentSheet[1];
++        sheet[0] = new ProfileCommentSheet(getContext(), currentAccount, ownerId, null, resourcesProvider, this::openOwnerChat, (text, tags) -> {
++            ProfileCommentsController.Comment c = controller.post(ownerId, text, tags);
++            if (c == null) {
++                sheet[0].showError(controller.getLeaveState(ownerId).text);
++                return false;
++            }
++            tagFilter = null;
++            update(true);
++            listView.smoothScrollToPosition(0);
++            String first = controller.getOwnerFirstName(ownerId);
++            BulletinFactory.of(fragment).createSimpleBulletin(R.raw.contact_check, c.status == ProfileCommentsController.STATUS_PENDING
++                ? formatString(R.string.ProfileCommentsToastPending, first)
++                : getString(R.string.ProfileCommentsToastPosted)).show();
++            return true;
++        });
++        sheet[0].show();
++    }
++
++    private void openOwnerChat() {
++        fragment.presentFragment(ChatActivity.of(ownerId));
++    }
++
++    // ------------------------------------------------------------------ comment actions
++
++    @Override
++    public void onCommentTap(ProfileCommentCell cell, ProfileCommentsController.Comment c) {
++        final boolean owner = controller.isOwner(ownerId);
++        final boolean mine = controller.isMine(c);
++        final String authorFirst = controller.getAuthorFirstName(c);
++        final ItemOptions o = ItemOptions.makeOptions(fragment, cell);
++
++        if (c.status == ProfileCommentsController.STATUS_APPROVED) {
++            // Fixed width: the strip scrolls horizontally instead of stretching the menu.
++            o.addView(makeReactionsRow(o, cell, c), LayoutHelper.createLinear(250, 46));
++            o.addGap();
++        }
++        if (owner) {
++            if (c.status == ProfileCommentsController.STATUS_PENDING) {
++                o.add(R.drawable.msg_select, getString(R.string.ProfileCommentsApprove), () -> onApprove(c));
++            } else {
++                o.add(R.drawable.menu_reply, getString(c.hasReply() ? R.string.ProfileCommentsEditReply : R.string.ProfileCommentsReply), () -> openReply(c));
++                if (c.hasReply()) {
++                    o.add(R.drawable.msg_cancel, getString(R.string.ProfileCommentsDeleteReply), () -> {
++                        controller.setReply(ownerId, c, null);
++                        toast(R.raw.ic_delete, getString(R.string.ProfileCommentsToastReplyDeleted));
++                    });
++                }
++                if (c.status == ProfileCommentsController.STATUS_APPROVED) {
++                    o.add(c.pinned ? R.drawable.msg_unpin : R.drawable.msg_pin, getString(c.pinned ? R.string.ProfileCommentsUnpin : R.string.ProfileCommentsPin), () -> {
++                        boolean pinned = controller.togglePin(ownerId, c);
++                        toast(pinned ? R.raw.ic_pin : R.raw.ic_unpin, getString(pinned ? R.string.ProfileCommentsToastPinned : R.string.ProfileCommentsToastUnpinned));
++                        if (pinned) listView.smoothScrollToPosition(0);
++                    });
++                }
++                final boolean hidden = c.status == ProfileCommentsController.STATUS_HIDDEN;
++                o.add(hidden ? R.drawable.msg_views : R.drawable.msg_stories_myhide, getString(hidden ? R.string.ProfileCommentsShow : R.string.ProfileCommentsHide), () -> {
++                    controller.setStatus(ownerId, c, hidden ? ProfileCommentsController.STATUS_APPROVED : ProfileCommentsController.STATUS_HIDDEN);
++                    toast(R.raw.contact_check, getString(hidden ? R.string.ProfileCommentsToastShown : R.string.ProfileCommentsToastHidden));
++                });
++            }
++        }
++        if (!mine) {
++            o.add(R.drawable.msg_message, formatString(R.string.ProfileCommentsMessage, authorFirst), () -> openAuthorChat(c));
++        }
++        o.add(R.drawable.msg_copy, getString(R.string.ProfileCommentsCopy), () -> {
++            AndroidUtilities.addToClipboard(c.text);
++            toast(R.raw.copy, getString(R.string.ProfileCommentsToastCopied));
++        });
++        if (!owner && !mine) {
++            final boolean reported = controller.isReportedByMe(c);
++            if (reported) {
++                o.add(R.drawable.msg_report, getString(R.string.ProfileCommentsReported), () -> {});
++            } else {
++                o.add(R.drawable.msg_report, getString(R.string.ProfileCommentsReport), true, () -> {
++                    controller.report(ownerId, c);
++                    toast(R.raw.chats_infotip, formatString(R.string.ProfileCommentsToastReported, controller.getOwnerFirstName(ownerId)));
++                });
++            }
++        }
++        if (owner || mine) {
++            o.addGap();
++            final int label = owner && !mine
++                ? (c.status == ProfileCommentsController.STATUS_PENDING ? R.string.ProfileCommentsDecline : R.string.ProfileCommentsDelete)
++                : R.string.ProfileCommentsDeleteMine;
++            o.add(R.drawable.msg_delete, getString(label), true, () -> {
++                controller.delete(ownerId, c);
++                toast(R.raw.ic_delete, getString(R.string.ProfileCommentsToastDeleted));
++            });
++        }
++        o.setDimAlpha(0x66);
++        o.show();
++    }
++
++    private View makeReactionsRow(ItemOptions o, ProfileCommentCell cell, ProfileCommentsController.Comment c) {
++        HorizontalScrollView scroll = new HorizontalScrollView(getContext());
++        scroll.setHorizontalScrollBarEnabled(false);
++        scroll.setClipToPadding(false);
++        scroll.setPadding(dp(6), 0, dp(6), 0);
++        LinearLayout row = new LinearLayout(getContext());
++        row.setOrientation(LinearLayout.HORIZONTAL);
++        scroll.addView(row);
++        final int accent = Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider);
++        for (String emoji : ProfileCommentsController.REACTIONS) {
++            TextView b = new TextView(getContext());
++            b.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 22);
++            b.setGravity(Gravity.CENTER);
++            b.setText(Emoji.replaceEmoji(emoji, b.getPaint().getFontMetricsInt(), false));
++            if (controller.hasMyReaction(c, emoji)) {
++                b.setBackground(Theme.createRoundRectDrawable(dp(19), Theme.multAlpha(accent, .15f)));
++            }
++            b.setContentDescription(emoji);
++            b.setOnClickListener(v -> {
++                o.dismiss();
++                react(cell, c, emoji);
++            });
++            ScaleStateListAnimator.apply(b, .2f, 1.5f);
++            row.addView(b, LayoutHelper.createLinear(38, 38, Gravity.CENTER_VERTICAL, 1, 4, 1, 4));
++        }
++        return scroll;
++    }
++
++    @Override
++    public void onCommentDoubleTap(ProfileCommentCell cell, ProfileCommentsController.Comment c) {
++        if (c.status != ProfileCommentsController.STATUS_APPROVED) return;
++        react(cell, c, ProfileCommentsController.REACTIONS[0]);
++    }
++
++    @Override
++    public void onReactionClick(ProfileCommentCell cell, ProfileCommentsController.Comment c, String emoji) {
++        react(cell, c, emoji);
++    }
++
++    private void react(ProfileCommentCell cell, ProfileCommentsController.Comment c, String emoji) {
++        if (c.status != ProfileCommentsController.STATUS_APPROVED) return;
++        if (cell != null && cell.getComment() == c) {
++            cell.bumpReaction(emoji);
++            cell.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
++        }
++        bumpKey = emoji;
++        controller.toggleReaction(ownerId, c, emoji);
++        bumpKey = null;
++    }
++
++    @Override
++    public void onApprove(ProfileCommentsController.Comment c) {
++        controller.setStatus(ownerId, c, ProfileCommentsController.STATUS_APPROVED);
++        toast(R.raw.contact_check, getString(R.string.ProfileCommentsToastApproved));
++    }
++
++    @Override
++    public void onDismiss(ProfileCommentsController.Comment c) {
++        controller.delete(ownerId, c);
++        toast(R.raw.ic_delete, getString(R.string.ProfileCommentsToastDismissed));
++    }
++
++    private void openReply(ProfileCommentsController.Comment c) {
++        new ProfileCommentSheet(getContext(), currentAccount, ownerId, c, resourcesProvider, null, (text, tags) -> {
++            controller.setReply(ownerId, c, text);
++            toast(R.raw.contact_check, getString(TextUtils.isEmpty(text) ? R.string.ProfileCommentsToastReplyDeleted : R.string.ProfileCommentsToastReply));
++            return true;
++        }).show();
++    }
++
++    private void openAuthorChat(ProfileCommentsController.Comment c) {
++        TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(c.authorId);
++        if (user == null) {
++            toast(R.raw.chats_infotip, getString(R.string.ProfileCommentsSampleUser));
++            return;
++        }
++        fragment.presentFragment(ChatActivity.of(c.authorId));
++    }
++
++    private void openSettings() {
++        fragment.presentFragment(new ProfileCommentsSettingsActivity());
++    }
++
++    private void toast(int raw, CharSequence text) {
++        BulletinFactory.of(fragment).createSimpleBulletin(raw, text).show();
++    }
++
++    // ------------------------------------------------------------------ adapter
++
++    private class Adapter extends RecyclerListView.SelectionAdapter {
++
++        Adapter() {
++            setHasStableIds(true);
++        }
++
++        @Override
++        public long getItemId(int position) {
++            return items.get(position).stableId;
++        }
++
++        @Override
++        public int getItemCount() {
++            return items.size();
++        }
++
++        @Override
++        public int getItemViewType(int position) {
++            return items.get(position).type;
++        }
++
++        @Override
++        public boolean isEnabled(RecyclerView.ViewHolder holder) {
++            return false;
++        }
++
++        @NonNull
++        @Override
++        public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
++            final Context context = parent.getContext();
++            View view;
++            switch (viewType) {
++                case TYPE_FILTERS: {
++                    HorizontalScrollView scroll = new HorizontalScrollView(context);
++                    scroll.setHorizontalScrollBarEnabled(false);
++                    scroll.setClipToPadding(false);
++                    scroll.setPadding(dp(12), dp(10), dp(12), dp(4));
++                    LinearLayout row = new LinearLayout(context);
++                    row.setOrientation(LinearLayout.HORIZONTAL);
++                    scroll.addView(row);
++                    view = scroll;
++                    break;
++                }
++                case TYPE_PENDING_HEADER:
++                case TYPE_LIST_HEADER:
++                    view = new HeaderView(context);
++                    break;
++                case TYPE_COMMENT:
++                    view = new ProfileCommentCell(context, currentAccount, resourcesProvider, ProfileCommentsContainer.this);
++                    break;
++                case TYPE_EMPTY:
++                    view = new EmptyView(context);
++                    break;
++                case TYPE_FOOTER: {
++                    TextView tv = new TextView(context);
++                    tv.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
++                    tv.setGravity(Gravity.CENTER_HORIZONTAL);
++                    tv.setPadding(dp(32), dp(14), dp(32), dp(14));
++                    tv.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
++                    view = tv;
++                    break;
++                }
++                case TYPE_GAP: {
++                    view = new View(context);
++                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray, resourcesProvider));
++                    view.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(10)));
++                    return new RecyclerListView.Holder(view);
++                }
++                case TYPE_BOTTOM_SPACE:
++                default:
++                    view = new View(context);
++                    break;
++            }
++            view.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
++            return new RecyclerListView.Holder(view);
++        }
++
++        @Override
++        public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
++            final Item item = items.get(position);
++            final boolean owner = controller.isOwner(ownerId);
++            final ProfileCommentsController.Settings settings = controller.getSettings(ownerId);
++            final String ownerFirst = controller.getOwnerFirstName(ownerId);
++            switch (item.type) {
++                case TYPE_FILTERS:
++                    bindFilters((LinearLayout) ((HorizontalScrollView) holder.itemView).getChildAt(0));
++                    break;
++                case TYPE_PENDING_HEADER: {
++                    HeaderView h = (HeaderView) holder.itemView;
++                    h.set(formatString(R.string.ProfileCommentsPendingHeader, item.contentHash), getString(R.string.ProfileCommentsPendingHint), Theme.key_color_orange, null);
++                    break;
++                }
++                case TYPE_LIST_HEADER: {
++                    HeaderView h = (HeaderView) holder.itemView;
++                    int count = controller.approvedCount(ownerId);
++                    String mode;
++                    if (settings.who == ProfileCommentsController.WHO_NOBODY) mode = getString(R.string.ProfileCommentsModeOff);
++                    else if (settings.who == ProfileCommentsController.WHO_CONTACTS) mode = getString(R.string.ProfileCommentsModeContacts);
++                    else if (settings.approve) mode = getString(R.string.ProfileCommentsModeApproval);
++                    else mode = getString(R.string.ProfileCommentsModePublic);
++                    if (owner) {
++                        h.set(formatPluralString("ProfileCommentsCount", count), mode + "  ·  " + getString(R.string.ProfileCommentsSettingsShort), -1, v -> openSettings());
++                    } else {
++                        h.set(formatPluralString("ProfileCommentsCount", count), mode, -1, null);
++                    }
++                    break;
++                }
++                case TYPE_COMMENT: {
++                    ProfileCommentCell cell = (ProfileCommentCell) holder.itemView;
++                    cell.set(ownerId, item.comment, item.pending, item.divider);
++                    break;
++                }
++                case TYPE_EMPTY: {
++                    EmptyView e = (EmptyView) holder.itemView;
++                    String sub;
++                    if (owner) sub = getString(R.string.ProfileCommentsEmptyOwner);
++                    else if (settings.who == ProfileCommentsController.WHO_NOBODY) sub = formatString(R.string.ProfileCommentsEmptyOff, ownerFirst);
++                    else sub = formatString(R.string.ProfileCommentsEmptyVisitor, ownerFirst);
++                    e.set(sub);
++                    break;
++                }
++                case TYPE_FOOTER: {
++                    String prefix = "";
++                    if (settings.who == ProfileCommentsController.WHO_NOBODY) prefix = formatString(R.string.ProfileCommentsRulesOff, ownerFirst);
++                    else if (settings.who == ProfileCommentsController.WHO_CONTACTS) prefix = formatString(R.string.ProfileCommentsRulesContacts, ownerFirst);
++                    String name = owner ? getString(R.string.ProfileCommentsYou).toLowerCase() : ownerFirst;
++                    ((TextView) holder.itemView).setText(prefix + formatString(R.string.ProfileCommentsRules, name));
++                    break;
++                }
++                case TYPE_BOTTOM_SPACE: {
++                    ViewGroup.LayoutParams lp = holder.itemView.getLayoutParams();
++                    lp.height = owner ? dp(24) : dp(76 + 16) + AndroidUtilities.navigationBarHeight;
++                    holder.itemView.setLayoutParams(lp);
++                    break;
++                }
++            }
++        }
++    }
++
++    private void bindFilters(LinearLayout row) {
++        row.removeAllViews();
++        final int accent = Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider);
++        final int text = Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider);
++        final int gray = Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider);
++        addFilterChip(row, null, getString(R.string.ProfileCommentsFilterAll), controller.approvedCount(ownerId), accent, text, gray);
++        for (Map.Entry<String, Integer> e : controller.getTagCounts(ownerId).entrySet()) {
++            ProfileCommentsController.Tag tag = ProfileCommentsController.findTag(e.getKey());
++            if (tag == null) continue;
++            addFilterChip(row, tag.id, tag.emoji + " " + getString(tag.titleRes), e.getValue(), accent, text, gray);
++        }
++    }
++
++    private void addFilterChip(LinearLayout row, String id, String label, int count, int accent, int text, int gray) {
++        final boolean on = Objects.equals(id, tagFilter);
++        TextView chip = new TextView(getContext());
++        chip.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
++        chip.setGravity(Gravity.CENTER_VERTICAL);
++        chip.setPadding(dp(12), 0, dp(12), 0);
++        SpannableStringBuilder sb = new SpannableStringBuilder(label).append("  ");
++        int start = sb.length();
++        sb.append(String.valueOf(count));
++        sb.setSpan(new ForegroundColorSpan(on ? accent : gray), start, sb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
++        chip.setText(Emoji.replaceEmoji(sb, chip.getPaint().getFontMetricsInt(), false));
++        chip.setTextColor(on ? accent : text);
++        chip.setTypeface(on ? AndroidUtilities.bold() : null);
++        chip.setBackground(Theme.createRoundRectDrawable(dp(16), on ? Theme.multAlpha(accent, .14f) : Theme.multAlpha(gray, .12f)));
++        chip.setOnClickListener(v -> {
++            if (Objects.equals(id, tagFilter)) return;
++            tagFilter = id;
++            update(true);
++        });
++        ScaleStateListAnimator.apply(chip, .05f, 1.4f);
++        row.addView(chip, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, 32, 0, 0, 8, 0));
++    }
++
++    /** Section title with a secondary text on the right. */
++    private class HeaderView extends LinearLayout {
++        private final TextView title;
++        private final TextView value;
++
++        HeaderView(Context context) {
++            super(context);
++            setOrientation(HORIZONTAL);
++            setGravity(Gravity.CENTER_VERTICAL);
++            setPadding(dp(16), dp(14), dp(16), dp(6));
++            title = new TextView(context);
++            title.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
++            title.setTypeface(AndroidUtilities.bold());
++            addView(title, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
++            value = new TextView(context);
++            value.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
++            value.setPadding(dp(8), dp(4), dp(8), dp(4));
++            addView(value, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL, 0, 0, -8, 0));
++        }
++
++        void set(CharSequence t, CharSequence v, int titleColorKey, View.OnClickListener onValueClick) {
++            title.setText(t);
++            title.setTextColor(Theme.getColor(titleColorKey >= 0 ? titleColorKey : Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
++            value.setText(v);
++            value.setTextColor(Theme.getColor(onValueClick != null ? Theme.key_windowBackgroundWhiteBlueText4 : Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
++            value.setOnClickListener(onValueClick);
++            value.setClickable(onValueClick != null);
++            value.setBackground(onValueClick != null ? Theme.createRadSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourcesProvider), 8, 8) : null);
++        }
++    }
++
++    private class EmptyView extends LinearLayout {
++        private final TextView subtitle;
++
++        EmptyView(Context context) {
++            super(context);
++            setOrientation(VERTICAL);
++            setGravity(Gravity.CENTER_HORIZONTAL);
++            setPadding(dp(32), dp(28), dp(32), dp(20));
++            ImageView icon = new ImageView(context);
++            icon.setImageResource(R.drawable.msg_discussion);
++            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
++            icon.setColorFilter(new android.graphics.PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider), android.graphics.PorterDuff.Mode.SRC_IN));
++            addView(icon, LayoutHelper.createLinear(44, 44, Gravity.CENTER_HORIZONTAL));
++            TextView title = new TextView(context);
++            title.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
++            title.setTypeface(AndroidUtilities.bold());
++            title.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText, resourcesProvider));
++            title.setText(getString(R.string.ProfileCommentsEmptyTitle));
++            addView(title, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 0, 10, 0, 0));
++            subtitle = new TextView(context);
++            subtitle.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
++            subtitle.setGravity(Gravity.CENTER);
++            subtitle.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText, resourcesProvider));
++            addView(subtitle, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 0, 4, 0, 0));
++        }
++
++        void set(CharSequence sub) {
++            subtitle.setText(sub);
++        }
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileComments/ProfileCommentsController.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileComments/ProfileCommentsController.java
+new file mode 100644
+index 0000000..47233b5
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/ProfileComments/ProfileCommentsController.java
+@@ -0,0 +1,692 @@
++package org.telegram.ui.ProfileComments;
++
++import android.content.Context;
++import android.content.SharedPreferences;
++import android.text.TextUtils;
++
++import org.json.JSONArray;
++import org.json.JSONObject;
++import org.telegram.messenger.ApplicationLoader;
++import org.telegram.messenger.FileLog;
++import org.telegram.messenger.MessagesController;
++import org.telegram.messenger.R;
++import org.telegram.messenger.UserConfig;
++import org.telegram.messenger.UserObject;
++import org.telegram.tgnet.TLRPC;
++
++import java.util.ArrayList;
++import java.util.Collections;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.Iterator;
++import java.util.LinkedHashMap;
++import java.util.Map;
++
++/**
++ * Profile Comments: a moderated comment wall on a user's profile. It is a wall, not a chat.
++ *
++ * Rules
++ *  - one comment per person every 24 hours;
++ *  - only the profile owner can reply (one reply per comment, shown under it);
++ *  - visitors can't reply to each other, "Message" opens a private chat instead;
++ *  - the owner chooses who can comment (Everybody / My Contacts / Nobody), can require approval,
++ *    and can pin, hide or delete any comment. Visitors can report a comment.
++ *
++ * Storage
++ *  The client keeps a per-account cache in SharedPreferences. Every mutating method below maps 1:1
++ *  to a method of the proposed MTProto API (see docs/API.md: profileComments.*). Until the server
++ *  side exists the cache is the source of truth, which is enough to run and demo the whole flow.
++ */
++public class ProfileCommentsController {
++
++    /** Seeds sample comments on your own wall so the feature can be demoed on a fresh account. */
++    public static boolean DEMO_DATA = true;
++
++    public static final int WHO_EVERYBODY = 0;
++    public static final int WHO_CONTACTS = 1;
++    public static final int WHO_NOBODY = 2;
++
++    public static final int STATUS_APPROVED = 0;
++    public static final int STATUS_PENDING = 1;
++    public static final int STATUS_HIDDEN = 2;
++
++    public static final long COOLDOWN_MS = 24L * 60 * 60 * 1000;
++    public static final int MAX_LENGTH = 300;
++    public static final int MIN_LENGTH = 2;
++    public static final int MAX_TAGS = 3;
++
++    public static final String[] REACTIONS = {"❤️", "👍", "🔥", "🥰", "👏", "😁", "🎉", "🤩", "😮", "🙏", "💯", "👌"};
++
++    public static final class Tag {
++        public final String id;
++        public final String emoji;
++        public final int titleRes;
++
++        Tag(String id, String emoji, int titleRes) {
++            this.id = id;
++            this.emoji = emoji;
++            this.titleRes = titleRes;
++        }
++    }
++
++    public static final Tag[] TAGS = {
++        new Tag("recommend", "👍", R.string.ProfileCommentsTagRecommend),
++        new Tag("worked", "🤝", R.string.ProfileCommentsTagWorked),
++        new Tag("designer", "🎨", R.string.ProfileCommentsTagDesigner),
++        new Tag("reliable", "⚡", R.string.ProfileCommentsTagReliable),
++        new Tag("creative", "✨", R.string.ProfileCommentsTagCreative),
++        new Tag("mentor", "🧭", R.string.ProfileCommentsTagMentor),
++    };
++
++    public static Tag findTag(String id) {
++        for (Tag t : TAGS) {
++            if (t.id.equals(id)) return t;
++        }
++        return null;
++    }
++
++    public static final class Comment {
++        public long id;
++        public long authorId;
++        /** Used when the author isn't in the local user cache (and for demo data). */
++        public String authorName;
++        public String text;
++        public long date;
++        public final ArrayList<String> tags = new ArrayList<>();
++        public int status;
++        public boolean pinned;
++        public String replyText;
++        public long replyDate;
++        /** emoji -> user ids, in insertion order. */
++        public final LinkedHashMap<String, HashSet<Long>> reactions = new LinkedHashMap<>();
++        public final HashSet<Long> reports = new HashSet<>();
++
++        public boolean hasReply() {
++            return !TextUtils.isEmpty(replyText);
++        }
++
++        public int reactionCount(String emoji) {
++            HashSet<Long> set = reactions.get(emoji);
++            return set == null ? 0 : set.size();
++        }
++
++        /** Reactions with at least one user, most popular first. */
++        public ArrayList<String> sortedReactions() {
++            ArrayList<String> out = new ArrayList<>();
++            for (Map.Entry<String, HashSet<Long>> e : reactions.entrySet()) {
++                if (!e.getValue().isEmpty()) out.add(e.getKey());
++            }
++            Collections.sort(out, (a, b) -> reactionCount(b) - reactionCount(a));
++            return out;
++        }
++
++        JSONObject toJson() throws Exception {
++            JSONObject o = new JSONObject();
++            o.put("id", id);
++            o.put("a", authorId);
++            if (authorName != null) o.put("n", authorName);
++            o.put("t", text);
++            o.put("d", date);
++            o.put("s", status);
++            o.put("p", pinned);
++            if (!tags.isEmpty()) o.put("g", new JSONArray(tags));
++            if (replyText != null) {
++                o.put("rt", replyText);
++                o.put("rd", replyDate);
++            }
++            if (!reactions.isEmpty()) {
++                JSONObject r = new JSONObject();
++                for (Map.Entry<String, HashSet<Long>> e : reactions.entrySet()) {
++                    JSONArray users = new JSONArray();
++                    for (Long uid : e.getValue()) users.put(uid);
++                    r.put(e.getKey(), users);
++                }
++                o.put("r", r);
++            }
++            if (!reports.isEmpty()) {
++                JSONArray rep = new JSONArray();
++                for (Long uid : reports) rep.put(uid);
++                o.put("x", rep);
++            }
++            return o;
++        }
++
++        static Comment fromJson(JSONObject o) throws Exception {
++            Comment c = new Comment();
++            c.id = o.getLong("id");
++            c.authorId = o.optLong("a");
++            c.authorName = o.has("n") ? o.getString("n") : null;
++            c.text = o.optString("t", "");
++            c.date = o.optLong("d");
++            c.status = o.optInt("s", STATUS_APPROVED);
++            c.pinned = o.optBoolean("p", false);
++            JSONArray g = o.optJSONArray("g");
++            if (g != null) {
++                for (int i = 0; i < g.length(); i++) c.tags.add(g.getString(i));
++            }
++            if (o.has("rt")) {
++                c.replyText = o.getString("rt");
++                c.replyDate = o.optLong("rd");
++            }
++            JSONObject r = o.optJSONObject("r");
++            if (r != null) {
++                Iterator<String> keys = r.keys();
++                while (keys.hasNext()) {
++                    String emoji = keys.next();
++                    JSONArray users = r.getJSONArray(emoji);
++                    HashSet<Long> set = new HashSet<>();
++                    for (int i = 0; i < users.length(); i++) set.add(users.getLong(i));
++                    c.reactions.put(emoji, set);
++                }
++            }
++            JSONArray x = o.optJSONArray("x");
++            if (x != null) {
++                for (int i = 0; i < x.length(); i++) c.reports.add(x.getLong(i));
++            }
++            return c;
++        }
++    }
++
++    public static final class Settings {
++        public int who = WHO_EVERYBODY;
++        public boolean approve;
++    }
++
++    /** Why the "Leave a comment" button is (un)available for the current user. */
++    public static final class LeaveState {
++        public final boolean allowed;
++        public final CharSequence text;
++
++        LeaveState(boolean allowed, CharSequence text) {
++            this.allowed = allowed;
++            this.text = text;
++        }
++    }
++
++    public interface Listener {
++        void onProfileCommentsUpdated(long ownerId);
++    }
++
++    private static final ProfileCommentsController[] instances = new ProfileCommentsController[UserConfig.MAX_ACCOUNT_COUNT];
++
++    public static ProfileCommentsController getInstance(int account) {
++        ProfileCommentsController c = instances[account];
++        if (c == null) {
++            synchronized (ProfileCommentsController.class) {
++                c = instances[account];
++                if (c == null) {
++                    instances[account] = c = new ProfileCommentsController(account);
++                }
++            }
++        }
++        return c;
++    }
++
++    private final int currentAccount;
++    private final SharedPreferences prefs;
++    private final HashMap<Long, ArrayList<Comment>> walls = new HashMap<>();
++    private final HashMap<Long, Settings> settings = new HashMap<>();
++    private final ArrayList<Listener> listeners = new ArrayList<>();
++
++    private ProfileCommentsController(int account) {
++        currentAccount = account;
++        prefs = ApplicationLoader.applicationContext.getSharedPreferences("profile_comments" + account, Context.MODE_PRIVATE);
++    }
++
++    // ---------------------------------------------------------------- listeners
++
++    public void addListener(Listener l) {
++        if (!listeners.contains(l)) listeners.add(l);
++    }
++
++    public void removeListener(Listener l) {
++        listeners.remove(l);
++    }
++
++    private void notifyChanged(long ownerId) {
++        for (Listener l : new ArrayList<>(listeners)) {
++            l.onProfileCommentsUpdated(ownerId);
++        }
++    }
++
++    // ---------------------------------------------------------------- identity
++
++    public long selfId() {
++        return UserConfig.getInstance(currentAccount).getClientUserId();
++    }
++
++    public boolean isOwner(long ownerId) {
++        return ownerId == selfId();
++    }
++
++    /** Comments work on regular user profiles: not bots, not deleted accounts. */
++    public boolean isSupported(long ownerId) {
++        if (ownerId <= 0) return false;
++        TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(ownerId);
++        return user != null && !user.bot && !UserObject.isDeleted(user) && !UserObject.isReplyUser(user) && !UserObject.isService(ownerId);
++    }
++
++    /** Whether the Comments tab should appear on this profile. */
++    public boolean isTabVisible(long ownerId) {
++        if (!isSupported(ownerId)) return false;
++        if (isOwner(ownerId)) return true;
++        return approvedCount(ownerId) > 0 || getSettings(ownerId).who != WHO_NOBODY;
++    }
++
++    public String getOwnerFirstName(long ownerId) {
++        TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(ownerId);
++        String name = user != null ? UserObject.getFirstName(user) : null;
++        return TextUtils.isEmpty(name) ? "" : name;
++    }
++
++    public String getAuthorName(Comment c) {
++        TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(c.authorId);
++        if (user != null) return UserObject.getUserName(user);
++        return c.authorName != null ? c.authorName : "";
++    }
++
++    public String getAuthorFirstName(Comment c) {
++        TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(c.authorId);
++        if (user != null) return UserObject.getFirstName(user);
++        String n = c.authorName != null ? c.authorName.trim() : "";
++        int space = n.indexOf(' ');
++        return space > 0 ? n.substring(0, space) : n;
++    }
++
++    public boolean isMine(Comment c) {
++        return c.authorId == selfId();
++    }
++
++    // ---------------------------------------------------------------- settings
++
++    public Settings getSettings(long ownerId) {
++        Settings s = settings.get(ownerId);
++        if (s == null) {
++            s = new Settings();
++            // TODO(server): visitors get these values from userFull.profile_comments_settings.
++            String raw = prefs.getString("settings_" + ownerId, null);
++            if (raw != null) {
++                try {
++                    JSONObject o = new JSONObject(raw);
++                    s.who = o.optInt("who", WHO_EVERYBODY);
++                    s.approve = o.optBoolean("approve", false);
++                } catch (Exception e) {
++                    FileLog.e(e);
++                }
++            }
++            settings.put(ownerId, s);
++        }
++        return s;
++    }
++
++    /** account.setProfileCommentsSettings */
++    public void setMySettings(int who, boolean approve) {
++        long me = selfId();
++        Settings s = getSettings(me);
++        s.who = who;
++        s.approve = approve;
++        try {
++            JSONObject o = new JSONObject();
++            o.put("who", who);
++            o.put("approve", approve);
++            prefs.edit().putString("settings_" + me, o.toString()).apply();
++        } catch (Exception e) {
++            FileLog.e(e);
++        }
++        notifyChanged(me);
++    }
++
++    // ---------------------------------------------------------------- reading
++
++    /** profileComments.getComments */
++    public ArrayList<Comment> getAll(long ownerId) {
++        ArrayList<Comment> list = walls.get(ownerId);
++        if (list == null) {
++            list = new ArrayList<>();
++            String raw = prefs.getString("wall_" + ownerId, null);
++            if (raw != null) {
++                try {
++                    JSONArray arr = new JSONArray(raw);
++                    for (int i = 0; i < arr.length(); i++) {
++                        list.add(Comment.fromJson(arr.getJSONObject(i)));
++                    }
++                } catch (Exception e) {
++                    FileLog.e(e);
++                }
++            } else if (DEMO_DATA && isOwner(ownerId)) {
++                seedDemo(list);
++                walls.put(ownerId, list);
++                save(ownerId);
++            }
++            walls.put(ownerId, list);
++        }
++        return list;
++    }
++
++    /**
++     * What the current user sees on the wall, newest first, pinned on top.
++     * Owner: everything except the pending queue (shown separately). Visitor: approved comments
++     * plus their own comment while it waits for approval.
++     */
++    public ArrayList<Comment> getVisible(long ownerId, String tagFilter) {
++        final boolean owner = isOwner(ownerId);
++        ArrayList<Comment> out = new ArrayList<>();
++        for (Comment c : getAll(ownerId)) {
++            boolean visible;
++            if (owner) {
++                visible = c.status != STATUS_PENDING;
++            } else {
++                visible = c.status == STATUS_APPROVED || c.status == STATUS_PENDING && isMine(c);
++            }
++            if (!visible) continue;
++            if (tagFilter != null && !c.tags.contains(tagFilter)) continue;
++            out.add(c);
++        }
++        Collections.sort(out, (a, b) -> {
++            int pa = a.pinned && a.status == STATUS_APPROVED ? 1 : 0;
++            int pb = b.pinned && b.status == STATUS_APPROVED ? 1 : 0;
++            if (pa != pb) return pb - pa;
++            return Long.compare(b.date, a.date);
++        });
++        return out;
++    }
++
++    public ArrayList<Comment> getPending(long ownerId) {
++        ArrayList<Comment> out = new ArrayList<>();
++        if (!isOwner(ownerId)) return out;
++        for (Comment c : getAll(ownerId)) {
++            if (c.status == STATUS_PENDING) out.add(c);
++        }
++        Collections.sort(out, (a, b) -> Long.compare(b.date, a.date));
++        return out;
++    }
++
++    public int approvedCount(long ownerId) {
++        int n = 0;
++        for (Comment c : getAll(ownerId)) {
++            if (c.status == STATUS_APPROVED) n++;
++        }
++        return n;
++    }
++
++    /** Tag id -> number of approved comments with it, most used first. */
++    public LinkedHashMap<String, Integer> getTagCounts(long ownerId) {
++        HashMap<String, Integer> counts = new HashMap<>();
++        for (Comment c : getAll(ownerId)) {
++            if (c.status != STATUS_APPROVED) continue;
++            for (String t : c.tags) {
++                if (findTag(t) == null) continue;
++                Integer v = counts.get(t);
++                counts.put(t, v == null ? 1 : v + 1);
++            }
++        }
++        ArrayList<Map.Entry<String, Integer>> entries = new ArrayList<>(counts.entrySet());
++        Collections.sort(entries, (a, b) -> b.getValue() - a.getValue());
++        LinkedHashMap<String, Integer> out = new LinkedHashMap<>();
++        for (Map.Entry<String, Integer> e : entries) out.put(e.getKey(), e.getValue());
++        return out;
++    }
++
++    public Comment find(long ownerId, long commentId) {
++        for (Comment c : getAll(ownerId)) {
++            if (c.id == commentId) return c;
++        }
++        return null;
++    }
++
++    private Comment myRecent(long ownerId) {
++        long since = System.currentTimeMillis() - COOLDOWN_MS;
++        Comment best = null;
++        for (Comment c : getAll(ownerId)) {
++            if (isMine(c) && c.date > since && (best == null || c.date > best.date)) best = c;
++        }
++        return best;
++    }
++
++    public LeaveState getLeaveState(long ownerId) {
++        if (isOwner(ownerId)) {
++            return new LeaveState(false, null);
++        }
++        final String first = getOwnerFirstName(ownerId);
++        final Settings s = getSettings(ownerId);
++        if (s.who == WHO_NOBODY) {
++            return new LeaveState(false, formatString(R.string.ProfileCommentsTurnedOff, first));
++        }
++        if (s.who == WHO_CONTACTS) {
++            TLRPC.User owner = MessagesController.getInstance(currentAccount).getUser(ownerId);
++            // The owner must have *us* in contacts; mutual_contact is the closest client-side signal.
++            if (owner == null || !owner.mutual_contact) {
++                return new LeaveState(false, formatString(R.string.ProfileCommentsContactsOnly, first));
++            }
++        }
++        Comment recent = myRecent(ownerId);
++        if (recent != null) {
++            return new LeaveState(false, formatString(R.string.ProfileCommentsCooldown, formatWait(recent.date + COOLDOWN_MS - System.currentTimeMillis())));
++        }
++        return new LeaveState(true, getString(R.string.ProfileCommentsLeave));
++    }
++
++    // ---------------------------------------------------------------- writing
++
++    /** profileComments.postComment */
++    public Comment post(long ownerId, String text, ArrayList<String> tags) {
++        if (!getLeaveState(ownerId).allowed) return null;
++        text = text.trim();
++        if (text.length() < MIN_LENGTH) return null;
++        if (text.length() > MAX_LENGTH) text = text.substring(0, MAX_LENGTH);
++        Comment c = new Comment();
++        c.id = System.currentTimeMillis();
++        c.authorId = selfId();
++        c.text = text;
++        c.date = System.currentTimeMillis();
++        for (String t : tags) {
++            if (findTag(t) != null && c.tags.size() < MAX_TAGS && !c.tags.contains(t)) c.tags.add(t);
++        }
++        c.status = getSettings(ownerId).approve ? STATUS_PENDING : STATUS_APPROVED;
++        getAll(ownerId).add(c);
++        save(ownerId);
++        notifyChanged(ownerId);
++        return c;
++    }
++
++    /** profileComments.setReply (owner only; empty text removes the reply) */
++    public void setReply(long ownerId, Comment c, String text) {
++        if (!isOwner(ownerId)) return;
++        text = text == null ? "" : text.trim();
++        if (text.length() > MAX_LENGTH) text = text.substring(0, MAX_LENGTH);
++        c.replyText = text.isEmpty() ? null : text;
++        c.replyDate = System.currentTimeMillis();
++        save(ownerId);
++        notifyChanged(ownerId);
++    }
++
++    /** profileComments.setStatus (owner only): approve, hide or show again */
++    public void setStatus(long ownerId, Comment c, int status) {
++        if (!isOwner(ownerId)) return;
++        c.status = status;
++        if (status != STATUS_APPROVED) c.pinned = false;
++        save(ownerId);
++        notifyChanged(ownerId);
++    }
++
++    /** profileComments.togglePin (owner only). One pinned comment at a time. */
++    public boolean togglePin(long ownerId, Comment c) {
++        if (!isOwner(ownerId) || c.status != STATUS_APPROVED) return false;
++        boolean pin = !c.pinned;
++        for (Comment other : getAll(ownerId)) other.pinned = false;
++        c.pinned = pin;
++        save(ownerId);
++        notifyChanged(ownerId);
++        return pin;
++    }
++
++    /** profileComments.deleteComment (owner: any comment, visitor: own comment) */
++    public void delete(long ownerId, Comment c) {
++        if (!isOwner(ownerId) && !isMine(c)) return;
++        getAll(ownerId).remove(c);
++        save(ownerId);
++        notifyChanged(ownerId);
++    }
++
++    /** profileComments.report (visitors) */
++    public void report(long ownerId, Comment c) {
++        if (isOwner(ownerId) || isMine(c)) return;
++        c.reports.add(selfId());
++        save(ownerId);
++        notifyChanged(ownerId);
++    }
++
++    public boolean isReportedByMe(Comment c) {
++        return c.reports.contains(selfId());
++    }
++
++    public boolean hasMyReaction(Comment c, String emoji) {
++        HashSet<Long> set = c.reactions.get(emoji);
++        return set != null && set.contains(selfId());
++    }
++
++    /** profileComments.sendReaction. Returns true when the reaction was added. */
++    public boolean toggleReaction(long ownerId, Comment c, String emoji) {
++        if (c.status != STATUS_APPROVED) return false;
++        HashSet<Long> set = c.reactions.get(emoji);
++        if (set == null) {
++            set = new HashSet<>();
++            c.reactions.put(emoji, set);
++        }
++        boolean added;
++        if (set.contains(selfId())) {
++            set.remove(selfId());
++            added = false;
++        } else {
++            set.add(selfId());
++            added = true;
++        }
++        save(ownerId);
++        notifyChanged(ownerId);
++        return added;
++    }
++
++    private void save(long ownerId) {
++        ArrayList<Comment> list = walls.get(ownerId);
++        if (list == null) return;
++        try {
++            JSONArray arr = new JSONArray();
++            for (Comment c : list) arr.put(c.toJson());
++            prefs.edit().putString("wall_" + ownerId, arr.toString()).apply();
++        } catch (Exception e) {
++            FileLog.e(e);
++        }
++    }
++
++    // ---------------------------------------------------------------- formatting
++
++    public static String formatAgo(long date) {
++        long now = System.currentTimeMillis();
++        long s = (now - date) / 1000;
++        if (s < 60) return getString(R.string.ProfileCommentsJustNow);
++        if (s < 3600) return formatString(R.string.ProfileCommentsMinAgo, (int) (s / 60));
++        java.util.Calendar a = java.util.Calendar.getInstance();
++        a.setTimeInMillis(date);
++        java.util.Calendar b = java.util.Calendar.getInstance();
++        b.setTimeInMillis(now);
++        int days = (int) Math.round((startOfDay(b) - startOfDay(a)) / (double) (24 * 60 * 60 * 1000));
++        if (days <= 0) return formatString(R.string.ProfileCommentsHoursAgo, (int) (s / 3600));
++        if (days == 1) return getString(R.string.ProfileCommentsYesterday);
++        if (days < 7) return formatString(R.string.ProfileCommentsDaysAgo, days);
++        if (a.get(java.util.Calendar.YEAR) == b.get(java.util.Calendar.YEAR)) {
++            return org.telegram.messenger.LocaleController.getInstance().getFormatterDayMonth().format(date);
++        }
++        return org.telegram.messenger.LocaleController.getInstance().getFormatterYear().format(date);
++    }
++
++    private static long startOfDay(java.util.Calendar c) {
++        java.util.Calendar d = (java.util.Calendar) c.clone();
++        d.set(java.util.Calendar.HOUR_OF_DAY, 0);
++        d.set(java.util.Calendar.MINUTE, 0);
++        d.set(java.util.Calendar.SECOND, 0);
++        d.set(java.util.Calendar.MILLISECOND, 0);
++        return d.getTimeInMillis();
++    }
++
++    public static String formatWait(long ms) {
++        int mins = (int) Math.max(1, (ms + 59_999) / 60_000);
++        int h = mins / 60, m = mins % 60;
++        if (h > 0) {
++            return m > 0 ? formatString(R.string.ProfileCommentsWaitHM, h, m) : formatString(R.string.ProfileCommentsWaitH, h);
++        }
++        return formatString(R.string.ProfileCommentsWaitM, m);
++    }
++
++    public static CharSequence tagLine(Comment c) {
++        StringBuilder sb = new StringBuilder();
++        for (String id : c.tags) {
++            Tag t = findTag(id);
++            if (t == null) continue;
++            if (sb.length() > 0) sb.append("  ·  ");
++            sb.append(t.emoji).append(' ').append(getString(t.titleRes));
++        }
++        return sb;
++    }
++
++    public static String whoLabel(int who) {
++        switch (who) {
++            case WHO_CONTACTS: return getString(R.string.ProfileCommentsWhoContacts);
++            case WHO_NOBODY: return getString(R.string.ProfileCommentsWhoNobody);
++            default: return getString(R.string.ProfileCommentsWhoEverybody);
++        }
++    }
++
++    private static String getString(int res) {
++        return org.telegram.messenger.LocaleController.getString(res);
++    }
++
++    private static String formatString(int res, Object... args) {
++        return org.telegram.messenger.LocaleController.formatString(res, args);
++    }
++
++    // ---------------------------------------------------------------- demo
++
++    private void seedDemo(ArrayList<Comment> list) {
++        long now = System.currentTimeMillis();
++        long day = COOLDOWN_MS;
++        list.add(demo(1, "Sofia Martinez", "Hi from Barcelona! Saw the prototype you're building, it looks amazing 🎉",
++            now - 4 * day, STATUS_APPROVED, new String[]{"creative"}, "🎉", 2));
++        Comment noah = demo(2, "Noah Bennett", "Super reliable designer. Delivered the whole onboarding flow two days early.",
++            now - day - 3_000_000L, STATUS_APPROVED, new String[]{"recommend", "reliable"}, "👍", 4);
++        noah.pinned = true;
++        noah.replyText = "Thanks Noah, that project was a joy 🙌";
++        noah.replyDate = now - day;
++        list.add(noah);
++        list.add(demo(3, "Liam Brooks", "Thanks for the talk in the design group. The part about prototyping with real code changed how I work.",
++            now - 3 * 3_600_000L, STATUS_APPROVED, new String[]{"mentor"}, "👍", 1));
++        Comment emma = demo(4, "Emma Wilson", "The mockup you sent yesterday turned out so good. We shipped it to the whole team!",
++            now - 20 * 60_000L, STATUS_APPROVED, new String[]{"worked", "recommend", "designer"}, "🔥", 3);
++        HashSet<Long> heart = new HashSet<>();
++        heart.add(-1L);
++        emma.reactions.put("❤️", heart);
++        list.add(emma);
++        list.add(demo(5, "Olivia Hayes", "Can you share the Figma file? Would love to learn from it.",
++            now - 6 * 60_000L, STATUS_PENDING, new String[0], null, 0));
++        String me = getOwnerFirstName(selfId());
++        list.add(demo(6, "Alex Morgan", (TextUtils.isEmpty(me) ? "You" : me) + " rebuilt our landing page in two days. Clean files and great communication! 🔥",
++            now - 2 * 60_000L, STATUS_PENDING, new String[]{"recommend", "worked"}, null, 0));
++    }
++
++    private static Comment demo(long n, String name, String text, long date, int status, String[] tags, String emoji, int reactions) {
++        Comment c = new Comment();
++        c.id = n;
++        // Negative ids never collide with real users and are treated as "not in cache".
++        c.authorId = -1000 - n;
++        c.authorName = name;
++        c.text = text;
++        c.date = date;
++        c.status = status;
++        Collections.addAll(c.tags, tags);
++        if (emoji != null && reactions > 0) {
++            HashSet<Long> set = new HashSet<>();
++            for (int i = 0; i < reactions; i++) set.add(-10L - i);
++            c.reactions.put(emoji, set);
++        }
++        return c;
++    }
++}
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ProfileComments/ProfileCommentsSettingsActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ProfileComments/ProfileCommentsSettingsActivity.java
+new file mode 100644
+index 0000000..19a761c
+--- /dev/null
++++ b/TMessagesProj/src/main/java/org/telegram/ui/ProfileComments/ProfileCommentsSettingsActivity.java
+@@ -0,0 +1,297 @@
++package org.telegram.ui.ProfileComments;
++
++import static org.telegram.messenger.AndroidUtilities.dp;
++import static org.telegram.messenger.LocaleController.getString;
++
++import android.content.Context;
++import android.graphics.PorterDuff;
++import android.graphics.PorterDuffColorFilter;
++import android.util.TypedValue;
++import android.view.Gravity;
++import android.view.View;
++import android.view.ViewGroup;
++import android.widget.FrameLayout;
++import android.widget.ImageView;
++import android.widget.LinearLayout;
++import android.widget.TextView;
++
++import androidx.annotation.NonNull;
++import androidx.recyclerview.widget.LinearLayoutManager;
++import androidx.recyclerview.widget.RecyclerView;
++
++import org.telegram.messenger.AndroidUtilities;
++import org.telegram.messenger.R;
++import org.telegram.ui.ActionBar.ActionBar;
++import org.telegram.ui.ActionBar.BaseFragment;
++import org.telegram.ui.ActionBar.Theme;
++import org.telegram.ui.Cells.HeaderCell;
++import org.telegram.ui.Cells.RadioCell;
++import org.telegram.ui.Cells.ShadowSectionCell;
++import org.telegram.ui.Cells.TextCheckCell;
++import org.telegram.ui.Cells.TextInfoPrivacyCell;
++import org.telegram.ui.Components.LayoutHelper;
++import org.telegram.ui.Components.RecyclerListView;
++
++/** Settings → Privacy and Security → Profile Comments. */
++public class ProfileCommentsSettingsActivity extends BaseFragment implements ProfileCommentsController.Listener {
++
++    private static final int VIEW_HEADER = 0;
++    private static final int VIEW_RADIO = 1;
++    private static final int VIEW_INFO = 2;
++    private static final int VIEW_CHECK = 3;
++    private static final int VIEW_FEATURE = 4;
++    private static final int VIEW_SHADOW = 5;
++
++    private RecyclerListView listView;
++    private ListAdapter adapter;
++
++    private int rowCount;
++    private int whoHeaderRow, everybodyRow, contactsRow, nobodyRow, whoInfoRow;
++    private int moderationHeaderRow, approveRow, approveInfoRow;
++    private int howHeaderRow, how1Row, how2Row, how3Row, howShadowRow;
++
++    @Override
++    public boolean onFragmentCreate() {
++        updateRows();
++        ProfileCommentsController.getInstance(currentAccount).addListener(this);
++        return super.onFragmentCreate();
++    }
++
++    @Override
++    public void onFragmentDestroy() {
++        ProfileCommentsController.getInstance(currentAccount).removeListener(this);
++        super.onFragmentDestroy();
++    }
++
++    private void updateRows() {
++        rowCount = 0;
++        whoHeaderRow = rowCount++;
++        everybodyRow = rowCount++;
++        contactsRow = rowCount++;
++        nobodyRow = rowCount++;
++        whoInfoRow = rowCount++;
++        moderationHeaderRow = rowCount++;
++        approveRow = rowCount++;
++        approveInfoRow = rowCount++;
++        howHeaderRow = rowCount++;
++        how1Row = rowCount++;
++        how2Row = rowCount++;
++        how3Row = rowCount++;
++        howShadowRow = rowCount++;
++    }
++
++    @Override
++    public View createView(Context context) {
++        actionBar.setBackButtonImage(R.drawable.ic_ab_back);
++        actionBar.setAllowOverlayTitle(true);
++        actionBar.setTitle(getString(R.string.ProfileCommentsTitle));
++        actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
++            @Override
++            public void onItemClick(int id) {
++                if (id == -1) finishFragment();
++            }
++        });
++
++        FrameLayout frameLayout = new FrameLayout(context);
++        frameLayout.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
++        fragmentView = frameLayout;
++
++        listView = new RecyclerListView(context);
++        listView.setLayoutManager(new LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false));
++        listView.setVerticalScrollBarEnabled(false);
++        listView.setAdapter(adapter = new ListAdapter(context));
++        frameLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
++        listView.setOnItemClickListener((view, position) -> {
++            final ProfileCommentsController controller = ProfileCommentsController.getInstance(currentAccount);
++            final ProfileCommentsController.Settings s = controller.getSettings(controller.selfId());
++            if (position == everybodyRow || position == contactsRow || position == nobodyRow) {
++                int who = position == everybodyRow ? ProfileCommentsController.WHO_EVERYBODY : position == contactsRow ? ProfileCommentsController.WHO_CONTACTS : ProfileCommentsController.WHO_NOBODY;
++                if (who != s.who) controller.setMySettings(who, s.approve);
++            } else if (position == approveRow) {
++                controller.setMySettings(s.who, !s.approve);
++                ((TextCheckCell) view).setChecked(!s.approve);
++            }
++        });
++        return fragmentView;
++    }
++
++    @Override
++    public void onProfileCommentsUpdated(long ownerId) {
++        if (listView == null) return;
++        // Refresh radios and the hint below them without rebuilding the list (keeps radio animations).
++        for (int i = 0; i < listView.getChildCount(); i++) {
++            View child = listView.getChildAt(i);
++            int position = listView.getChildAdapterPosition(child);
++            if (position == RecyclerView.NO_POSITION) continue;
++            if (child instanceof RadioCell) {
++                ((RadioCell) child).setChecked(isWhoChecked(position), true);
++            } else if (position == whoInfoRow) {
++                adapter.onBindViewHolder(listView.getChildViewHolder(child), position);
++            }
++        }
++    }
++
++    private boolean isWhoChecked(int position) {
++        final ProfileCommentsController controller = ProfileCommentsController.getInstance(currentAccount);
++        int who = controller.getSettings(controller.selfId()).who;
++        return position == everybodyRow && who == ProfileCommentsController.WHO_EVERYBODY
++            || position == contactsRow && who == ProfileCommentsController.WHO_CONTACTS
++            || position == nobodyRow && who == ProfileCommentsController.WHO_NOBODY;
++    }
++
++    private class ListAdapter extends RecyclerListView.SelectionAdapter {
++        private final Context context;
++
++        ListAdapter(Context context) {
++            this.context = context;
++        }
++
++        @Override
++        public boolean isEnabled(RecyclerView.ViewHolder holder) {
++            int p = holder.getAdapterPosition();
++            return p == everybodyRow || p == contactsRow || p == nobodyRow || p == approveRow;
++        }
++
++        @Override
++        public int getItemCount() {
++            return rowCount;
++        }
++
++        @Override
++        public int getItemViewType(int position) {
++            if (position == whoHeaderRow || position == moderationHeaderRow || position == howHeaderRow) return VIEW_HEADER;
++            if (position == everybodyRow || position == contactsRow || position == nobodyRow) return VIEW_RADIO;
++            if (position == approveRow) return VIEW_CHECK;
++            if (position == how1Row || position == how2Row || position == how3Row) return VIEW_FEATURE;
++            if (position == howShadowRow) return VIEW_SHADOW;
++            return VIEW_INFO;
++        }
++
++        @NonNull
++        @Override
++        public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
++            View view;
++            switch (viewType) {
++                case VIEW_HEADER:
++                    view = new HeaderCell(context);
++                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
++                    break;
++                case VIEW_RADIO:
++                    view = new RadioCell(context);
++                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
++                    break;
++                case VIEW_CHECK:
++                    view = new TextCheckCell(context);
++                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
++                    break;
++                case VIEW_FEATURE:
++                    view = new FeatureCell(context);
++                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
++                    break;
++                case VIEW_SHADOW:
++                    view = new ShadowSectionCell(context);
++                    break;
++                case VIEW_INFO:
++                default:
++                    view = new TextInfoPrivacyCell(context);
++                    break;
++            }
++            view.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
++            return new RecyclerListView.Holder(view);
++        }
++
++        @Override
++        public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
++            final ProfileCommentsController controller = ProfileCommentsController.getInstance(currentAccount);
++            final ProfileCommentsController.Settings s = controller.getSettings(controller.selfId());
++            switch (holder.getItemViewType()) {
++                case VIEW_HEADER: {
++                    HeaderCell cell = (HeaderCell) holder.itemView;
++                    if (position == whoHeaderRow) cell.setText(getString(R.string.ProfileCommentsWhoHeader));
++                    else if (position == moderationHeaderRow) cell.setText(getString(R.string.ProfileCommentsModerationHeader));
++                    else cell.setText(getString(R.string.ProfileCommentsHowHeader));
++                    break;
++                }
++                case VIEW_RADIO: {
++                    RadioCell cell = (RadioCell) holder.itemView;
++                    if (position == everybodyRow) cell.setText(getString(R.string.ProfileCommentsWhoEverybody), isWhoChecked(position), true);
++                    else if (position == contactsRow) cell.setText(getString(R.string.ProfileCommentsWhoContacts), isWhoChecked(position), true);
++                    else cell.setText(getString(R.string.ProfileCommentsWhoNobody), isWhoChecked(position), false);
++                    break;
++                }
++                case VIEW_CHECK: {
++                    TextCheckCell cell = (TextCheckCell) holder.itemView;
++                    cell.setTextAndCheck(getString(R.string.ProfileCommentsApproveNew), s.approve, false);
++                    break;
++                }
++                case VIEW_FEATURE: {
++                    FeatureCell cell = (FeatureCell) holder.itemView;
++                    if (position == how1Row) cell.set(R.drawable.msg_recent, getString(R.string.ProfileCommentsHow1), getString(R.string.ProfileCommentsHow1Sub), true);
++                    else if (position == how2Row) cell.set(R.drawable.menu_reply, getString(R.string.ProfileCommentsHow2), getString(R.string.ProfileCommentsHow2Sub), true);
++                    else cell.set(R.drawable.msg_pin, getString(R.string.ProfileCommentsHow3), getString(R.string.ProfileCommentsHow3Sub), false);
++                    break;
++                }
++                case VIEW_INFO: {
++                    TextInfoPrivacyCell cell = (TextInfoPrivacyCell) holder.itemView;
++                    if (position == whoInfoRow) {
++                        int res = s.who == ProfileCommentsController.WHO_NOBODY ? R.string.ProfileCommentsWhoInfoNobody
++                            : s.who == ProfileCommentsController.WHO_CONTACTS ? R.string.ProfileCommentsWhoInfoContacts
++                            : R.string.ProfileCommentsWhoInfoEverybody;
++                        cell.setText(getString(res));
++                        cell.setBackground(Theme.getThemedDrawableByKey(context, R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow));
++                    } else {
++                        cell.setText(getString(R.string.ProfileCommentsApproveInfo));
++                        cell.setBackground(Theme.getThemedDrawableByKey(context, R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow));
++                    }
++                    break;
++                }
++            }
++        }
++    }
++
++    /** Icon + title + subtitle row, used for "How comments work". */
++    private static class FeatureCell extends LinearLayout {
++        private final ImageView icon;
++        private final TextView title;
++        private final TextView subtitle;
++        private boolean divider;
++
++        FeatureCell(Context context) {
++            super(context);
++            setOrientation(HORIZONTAL);
++            setWillNotDraw(false);
++            setPadding(dp(21), dp(10), dp(16), dp(10));
++            icon = new ImageView(context);
++            icon.setScaleType(ImageView.ScaleType.CENTER);
++            icon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteBlueIcon), PorterDuff.Mode.SRC_IN));
++            addView(icon, LayoutHelper.createLinear(24, 24, Gravity.TOP, 0, 6, 0, 0));
++            LinearLayout texts = new LinearLayout(context);
++            texts.setOrientation(VERTICAL);
++            addView(texts, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, 30, 0, 0, 0));
++            title = new TextView(context);
++            title.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
++            title.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
++            texts.addView(title);
++            subtitle = new TextView(context);
++            subtitle.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
++            subtitle.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2));
++            texts.addView(subtitle, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 2, 0, 0));
++        }
++
++        void set(int iconRes, CharSequence t, CharSequence s, boolean divider) {
++            icon.setImageResource(iconRes);
++            title.setText(t);
++            subtitle.setText(s);
++            this.divider = divider;
++            invalidate();
++        }
++
++        @Override
++        protected void onDraw(android.graphics.Canvas canvas) {
++            super.onDraw(canvas);
++            if (divider) {
++                canvas.drawLine(dp(75), getHeight() - 1, getWidth(), getHeight() - 1, Theme.dividerPaint);
++            }
++        }
++    }
++}
+diff --git a/TMessagesProj/src/main/res/values/strings_profile_comments.xml b/TMessagesProj/src/main/res/values/strings_profile_comments.xml
+new file mode 100644
+index 0000000..1ddb4fc
+--- /dev/null
++++ b/TMessagesProj/src/main/res/values/strings_profile_comments.xml
+@@ -0,0 +1,126 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!-- Profile Comments. Kept in a separate file so the feature is easy to review and merge. -->
++<resources>
++    <string name="ProfileCommentsTab">Comments</string>
++    <string name="ProfileCommentsTitle">Profile Comments</string>
++
++    <string name="ProfileCommentsTagRecommend">Recommend</string>
++    <string name="ProfileCommentsTagWorked">Worked together</string>
++    <string name="ProfileCommentsTagDesigner">Great designer</string>
++    <string name="ProfileCommentsTagReliable">Fast &amp; reliable</string>
++    <string name="ProfileCommentsTagCreative">Creative</string>
++    <string name="ProfileCommentsTagMentor">Helpful mentor</string>
++
++    <string name="ProfileCommentsJustNow">just now</string>
++    <string name="ProfileCommentsMinAgo">%1$d min ago</string>
++    <string name="ProfileCommentsHoursAgo">%1$d h ago</string>
++    <string name="ProfileCommentsYesterday">Yesterday</string>
++    <string name="ProfileCommentsDaysAgo">%1$d days ago</string>
++    <string name="ProfileCommentsWaitH">%1$d h</string>
++    <string name="ProfileCommentsWaitHM">%1$d h %2$d min</string>
++    <string name="ProfileCommentsWaitM">%1$d min</string>
++
++    <string name="ProfileCommentsLeave">Leave a comment</string>
++    <string name="ProfileCommentsTurnedOff">%1$s turned off comments</string>
++    <string name="ProfileCommentsContactsOnly">Only %1$s\'s contacts can comment</string>
++    <string name="ProfileCommentsCooldown">You can comment again in %1$s</string>
++
++    <string name="ProfileCommentsYou">You</string>
++    <string name="ProfileCommentsAwaiting">Awaiting approval</string>
++    <string name="ProfileCommentsHiddenLabel">Hidden from visitors</string>
++    <string name="ProfileCommentsReports_zero">%1$d reports</string>
++    <string name="ProfileCommentsReports_one">%1$d report</string>
++    <string name="ProfileCommentsReports_two">%1$d reports</string>
++    <string name="ProfileCommentsReports_few">%1$d reports</string>
++    <string name="ProfileCommentsReports_many">%1$d reports</string>
++    <string name="ProfileCommentsReports_other">%1$d reports</string>
++    <string name="ProfileCommentsReplyTitle">%1$s · author · %2$s</string>
++    <string name="ProfileCommentsApprove">Approve</string>
++    <string name="ProfileCommentsDismiss">Dismiss</string>
++
++    <string name="ProfileCommentsCount_zero">%1$d comments</string>
++    <string name="ProfileCommentsCount_one">%1$d comment</string>
++    <string name="ProfileCommentsCount_two">%1$d comments</string>
++    <string name="ProfileCommentsCount_few">%1$d comments</string>
++    <string name="ProfileCommentsCount_many">%1$d comments</string>
++    <string name="ProfileCommentsCount_other">%1$d comments</string>
++    <string name="ProfileCommentsFilterAll">All</string>
++    <string name="ProfileCommentsPendingHeader">Waiting for approval · %1$d</string>
++    <string name="ProfileCommentsPendingHint">Only you see these</string>
++    <string name="ProfileCommentsModePublic">Public</string>
++    <string name="ProfileCommentsModeApproval">Approval on</string>
++    <string name="ProfileCommentsModeContacts">Contacts only</string>
++    <string name="ProfileCommentsModeOff">Comments off</string>
++    <string name="ProfileCommentsSettingsShort">Settings</string>
++    <string name="ProfileCommentsEmptyTitle">No comments yet</string>
++    <string name="ProfileCommentsEmptyVisitor">Be the first to leave a comment on %1$s\'s profile.</string>
++    <string name="ProfileCommentsEmptyOwner">When people leave comments on your profile, they will appear here.</string>
++    <string name="ProfileCommentsEmptyOff">%1$s has turned off comments.</string>
++    <string name="ProfileCommentsRules">One comment per person every 24 hours. Only %1$s can reply. To talk, send a private message.</string>
++    <string name="ProfileCommentsRulesOff">%1$s turned off new comments. </string>
++    <string name="ProfileCommentsRulesContacts">Only %1$s\'s contacts can comment. </string>
++
++    <string name="ProfileCommentsReply">Reply</string>
++    <string name="ProfileCommentsEditReply">Edit reply</string>
++    <string name="ProfileCommentsDeleteReply">Delete reply</string>
++    <string name="ProfileCommentsPin">Pin to top</string>
++    <string name="ProfileCommentsUnpin">Unpin</string>
++    <string name="ProfileCommentsHide">Hide from visitors</string>
++    <string name="ProfileCommentsShow">Show to visitors</string>
++    <string name="ProfileCommentsMessage">Message %1$s</string>
++    <string name="ProfileCommentsCopy">Copy text</string>
++    <string name="ProfileCommentsReport">Report</string>
++    <string name="ProfileCommentsReported">Reported</string>
++    <string name="ProfileCommentsDelete">Delete comment</string>
++    <string name="ProfileCommentsDeleteMine">Delete my comment</string>
++    <string name="ProfileCommentsDecline">Decline</string>
++
++    <string name="ProfileCommentsToastApproved">Comment approved</string>
++    <string name="ProfileCommentsToastDismissed">Comment dismissed</string>
++    <string name="ProfileCommentsToastDeleted">Comment deleted</string>
++    <string name="ProfileCommentsToastPinned">Pinned to the top</string>
++    <string name="ProfileCommentsToastUnpinned">Comment unpinned</string>
++    <string name="ProfileCommentsToastHidden">Comment hidden from visitors</string>
++    <string name="ProfileCommentsToastShown">Comment is visible again</string>
++    <string name="ProfileCommentsToastReported">Thanks. %1$s will review this comment.</string>
++    <string name="ProfileCommentsToastCopied">Text copied to clipboard</string>
++    <string name="ProfileCommentsToastPosted">Comment posted</string>
++    <string name="ProfileCommentsToastPending">Sent. It will appear after %1$s approves it.</string>
++    <string name="ProfileCommentsToastReply">Reply posted</string>
++    <string name="ProfileCommentsToastReplyDeleted">Reply deleted</string>
++    <string name="ProfileCommentsSampleUser">This is a sample comment, so there is no chat to open.</string>
++
++    <string name="ProfileCommentsSheetTitle">Comment on %1$s\'s profile</string>
++    <string name="ProfileCommentsSheetSubPublic">Visible to everyone who opens this profile</string>
++    <string name="ProfileCommentsSheetSubApproval">%1$s will review it before it appears</string>
++    <string name="ProfileCommentsSheetTags">What describes %1$s? (up to 3)</string>
++    <string name="ProfileCommentsSheetField">Your comment</string>
++    <string name="ProfileCommentsSheetHint">Write something about working with %1$s</string>
++    <string name="ProfileCommentsSheetNote">You can leave one comment every 24 hours, and only %1$s can reply. Want to talk? **Message %1$s**</string>
++    <string name="ProfileCommentsSheetPost">Post comment</string>
++    <string name="ProfileCommentsReplyTo">Reply to %1$s</string>
++    <string name="ProfileCommentsEditReplyTo">Edit reply to %1$s</string>
++    <string name="ProfileCommentsReplyField">Your reply</string>
++    <string name="ProfileCommentsReplyHint">Thank %1$s or add context</string>
++    <string name="ProfileCommentsReplyNote">One reply per comment. It appears under %1$s\'s comment, and visitors can\'t reply to it.</string>
++    <string name="ProfileCommentsReplyPost">Post reply</string>
++
++    <string name="ProfileCommentsWhoHeader">Who can comment on my profile?</string>
++    <string name="ProfileCommentsWhoEverybody">Everybody</string>
++    <string name="ProfileCommentsWhoContacts">My Contacts</string>
++    <string name="ProfileCommentsWhoNobody">Nobody</string>
++    <string name="ProfileCommentsWhoInfoEverybody">Anyone who opens your profile can leave one comment a day.</string>
++    <string name="ProfileCommentsWhoInfoContacts">Only people in your contacts can leave a comment on your profile.</string>
++    <string name="ProfileCommentsWhoInfoNobody">Existing comments stay visible, but no one can add new ones.</string>
++    <string name="ProfileCommentsModerationHeader">Moderation</string>
++    <string name="ProfileCommentsApproveNew">Approve new comments</string>
++    <string name="ProfileCommentsApproveInfo">When this is on, new comments stay hidden until you approve them on your profile.</string>
++    <string name="ProfileCommentsHowHeader">How comments work</string>
++    <string name="ProfileCommentsHow1">One comment per person a day</string>
++    <string name="ProfileCommentsHow1Sub">Keeps your profile a wall, not a chat.</string>
++    <string name="ProfileCommentsHow2">Only you can reply</string>
++    <string name="ProfileCommentsHow2Sub">Visitors who want to talk are sent to a private chat.</string>
++    <string name="ProfileCommentsHow3">Pin, hide or delete any comment</string>
++    <string name="ProfileCommentsHow3Sub">Tap a comment on your profile to manage it.</string>
++    <string name="ProfileCommentsPrivacyValueApproval">%1$s, approval</string>
++</resources>

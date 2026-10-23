@@ -1,0 +1,2805 @@
+diff --git a/submodules/SettingsUI/BUILD b/submodules/SettingsUI/BUILD
+index 3243813..e843223 100644
+--- a/submodules/SettingsUI/BUILD
++++ b/submodules/SettingsUI/BUILD
+@@ -12,6 +12,7 @@ swift_library(
+         "-warnings-as-errors",
+     ],
+     deps = [
++        "//submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI",
+         "//submodules/SSignalKit/SwiftSignalKit:SwiftSignalKit",
+         "//submodules/LottieSettings:LottieSettings",
+         "//submodules/AsyncDisplayKit:AsyncDisplayKit",
+diff --git a/submodules/SettingsUI/Sources/Privacy and Security/PrivacyAndSecurityController.swift b/submodules/SettingsUI/Sources/Privacy and Security/PrivacyAndSecurityController.swift
+index 0a8324b..a973cd7 100644
+--- a/submodules/SettingsUI/Sources/Privacy and Security/PrivacyAndSecurityController.swift	
++++ b/submodules/SettingsUI/Sources/Privacy and Security/PrivacyAndSecurityController.swift	
+@@ -22,6 +22,7 @@ import AuthenticationServices
+ import ChatTimerScreen
+ import PasskeysScreen
+ import ContextUI
++import ProfileCommentsUI
+ 
+ private final class PrivacyAndSecurityControllerArguments {
+     let account: Account
+@@ -48,8 +49,9 @@ private final class PrivacyAndSecurityControllerArguments {
+     let openEmailSettings: (String?) -> Void
+     let openMessagePrivacy: () -> Void
+     let openGiftsPrivacy: () -> Void
++    let openProfileComments: () -> Void
+     
+-    init(account: Account, openBlockedUsers: @escaping () -> Void, openLastSeenPrivacy: @escaping () -> Void, openGroupsPrivacy: @escaping () -> Void, openVoiceCallPrivacy: @escaping () -> Void, openProfilePhotoPrivacy: @escaping () -> Void, openForwardPrivacy: @escaping () -> Void, openPhoneNumberPrivacy: @escaping () -> Void, openVoiceMessagePrivacy: @escaping () -> Void, openBioPrivacy: @escaping () -> Void, openBirthdayPrivacy: @escaping () -> Void, openSavedMusicPrivacy: @escaping () -> Void, openPasscode: @escaping () -> Void, openTwoStepVerification: @escaping (TwoStepVerificationAccessConfiguration?) -> Void, openPasskeys: @escaping () -> Void, openActiveSessions: @escaping () -> Void, toggleArchiveAndMuteNonContacts: @escaping (Bool) -> Void, setupAccountAutoremove: @escaping () -> Void, setupMessageAutoremove: @escaping () -> Void, openDataSettings: @escaping () -> Void, openBrowserSelection: @escaping () -> Void, openEmailSettings: @escaping (String?) -> Void, openMessagePrivacy: @escaping () -> Void, openGiftsPrivacy: @escaping () -> Void) {
++    init(account: Account, openBlockedUsers: @escaping () -> Void, openLastSeenPrivacy: @escaping () -> Void, openGroupsPrivacy: @escaping () -> Void, openVoiceCallPrivacy: @escaping () -> Void, openProfilePhotoPrivacy: @escaping () -> Void, openForwardPrivacy: @escaping () -> Void, openPhoneNumberPrivacy: @escaping () -> Void, openVoiceMessagePrivacy: @escaping () -> Void, openBioPrivacy: @escaping () -> Void, openBirthdayPrivacy: @escaping () -> Void, openSavedMusicPrivacy: @escaping () -> Void, openPasscode: @escaping () -> Void, openTwoStepVerification: @escaping (TwoStepVerificationAccessConfiguration?) -> Void, openPasskeys: @escaping () -> Void, openActiveSessions: @escaping () -> Void, toggleArchiveAndMuteNonContacts: @escaping (Bool) -> Void, setupAccountAutoremove: @escaping () -> Void, setupMessageAutoremove: @escaping () -> Void, openDataSettings: @escaping () -> Void, openBrowserSelection: @escaping () -> Void, openEmailSettings: @escaping (String?) -> Void, openMessagePrivacy: @escaping () -> Void, openGiftsPrivacy: @escaping () -> Void, openProfileComments: @escaping () -> Void) {
+         self.account = account
+         self.openBlockedUsers = openBlockedUsers
+         self.openLastSeenPrivacy = openLastSeenPrivacy
+@@ -74,6 +76,7 @@ private final class PrivacyAndSecurityControllerArguments {
+         self.openEmailSettings = openEmailSettings
+         self.openMessagePrivacy = openMessagePrivacy
+         self.openGiftsPrivacy = openGiftsPrivacy
++        self.openProfileComments = openProfileComments
+     }
+ }
+ 
+@@ -118,6 +121,7 @@ private enum PrivacyAndSecurityEntry: ItemListNodeEntry {
+     case birthdayPrivacy(PresentationTheme, String, String)
+     case savedMusicPrivacy(PresentationTheme, String, String)
+     case giftsAutoSavePrivacy(PresentationTheme, String, String)
++    case profileCommentsPrivacy(PresentationTheme, String, String)
+     case selectivePrivacyInfo(PresentationTheme, String)
+     case passcode(PresentationTheme, String, Bool, String)
+     case twoStepVerification(PresentationTheme, String, String, TwoStepVerificationAccessConfiguration?)
+@@ -143,7 +147,7 @@ private enum PrivacyAndSecurityEntry: ItemListNodeEntry {
+             return PrivacyAndSecuritySection.general.rawValue
+         case .loginEmail, .loginEmailInfo:
+             return PrivacyAndSecuritySection.loginEmail.rawValue
+-        case .privacyHeader, .phoneNumberPrivacy, .lastSeenPrivacy, .profilePhotoPrivacy, .forwardPrivacy, .groupPrivacy, .groupPrivacyFooter, .voiceCallPrivacy, .voiceMessagePrivacy, .messagePrivacy, .bioPrivacy, .birthdayPrivacy, .savedMusicPrivacy, .giftsAutoSavePrivacy, .selectivePrivacyInfo:
++        case .privacyHeader, .phoneNumberPrivacy, .lastSeenPrivacy, .profilePhotoPrivacy, .forwardPrivacy, .groupPrivacy, .groupPrivacyFooter, .voiceCallPrivacy, .voiceMessagePrivacy, .messagePrivacy, .bioPrivacy, .birthdayPrivacy, .savedMusicPrivacy, .giftsAutoSavePrivacy, .profileCommentsPrivacy, .selectivePrivacyInfo:
+             return PrivacyAndSecuritySection.privacy.rawValue
+         case .autoArchiveHeader, .autoArchive, .autoArchiveInfo:
+             return PrivacyAndSecuritySection.autoArchive.rawValue
+@@ -188,42 +192,44 @@ private enum PrivacyAndSecurityEntry: ItemListNodeEntry {
+                 return 14
+             case .giftsAutoSavePrivacy:
+                 return 15
+-            case .birthdayPrivacy:
++            case .profileCommentsPrivacy:
+                 return 16
+-            case .savedMusicPrivacy:
++            case .birthdayPrivacy:
+                 return 17
+-            case .forwardPrivacy:
++            case .savedMusicPrivacy:
+                 return 18
+-            case .voiceCallPrivacy:
++            case .forwardPrivacy:
+                 return 19
+-            case .voiceMessagePrivacy:
++            case .voiceCallPrivacy:
+                 return 20
+-            case .messagePrivacy:
++            case .voiceMessagePrivacy:
+                 return 21
+-            case .groupPrivacy:
++            case .messagePrivacy:
+                 return 22
+-            case .groupPrivacyFooter:
++            case .groupPrivacy:
+                 return 23
+-            case .selectivePrivacyInfo:
++            case .groupPrivacyFooter:
+                 return 24
+-            case .autoArchiveHeader:
++            case .selectivePrivacyInfo:
+                 return 25
+-            case .autoArchive:
++            case .autoArchiveHeader:
+                 return 26
+-            case .autoArchiveInfo:
++            case .autoArchive:
+                 return 27
+-            case .accountHeader:
++            case .autoArchiveInfo:
+                 return 28
+-            case .accountTimeout:
++            case .accountHeader:
+                 return 29
+-            case .accountInfo:
++            case .accountTimeout:
+                 return 30
+-            case .dataSettings:
++            case .accountInfo:
+                 return 31
+-            case .dataSettingsInfo:
++            case .dataSettings:
+                 return 32
+-            case .openLinksIn:
++            case .dataSettingsInfo:
+                 return 33
++            case .openLinksIn:
++                return 34
+         }
+     }
+     
+@@ -313,6 +319,12 @@ private enum PrivacyAndSecurityEntry: ItemListNodeEntry {
+                 } else {
+                     return false
+                 }
++            case let .profileCommentsPrivacy(lhsTheme, lhsText, lhsValue):
++                if case let .profileCommentsPrivacy(rhsTheme, rhsText, rhsValue) = rhs, lhsTheme === rhsTheme, lhsText == rhsText, lhsValue == rhsValue {
++                    return true
++                } else {
++                    return false
++                }
+             case let .giftsAutoSavePrivacy(lhsTheme, lhsText, lhsValue):
+                 if case let .giftsAutoSavePrivacy(rhsTheme, rhsText, rhsValue) = rhs, lhsTheme === rhsTheme, lhsText == rhsText, lhsValue == rhsValue {
+                     return true
+@@ -489,6 +501,10 @@ private enum PrivacyAndSecurityEntry: ItemListNodeEntry {
+                 return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: text, label: value, sectionId: self.section, style: .blocks, action: {
+                     arguments.openGiftsPrivacy()
+                 })
++            case let .profileCommentsPrivacy(_, text, value):
++                return ItemListDisclosureItem(presentationData: presentationData, systemStyle: .glass, title: text, label: value, sectionId: self.section, style: .blocks, action: {
++                    arguments.openProfileComments()
++                })
+             case let .selectivePrivacyInfo(_, text):
+                 return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
+             case let .voiceCallPrivacy(_, text, value):
+@@ -661,7 +677,8 @@ private func privacyAndSecurityControllerEntries(
+     loginEmail: String?,
+     accountPeer: EnginePeer?,
+     defaultWebBrowser: String,
+-    appConfiguration: AppConfiguration
++    appConfiguration: AppConfiguration,
++    profileCommentsValue: String
+ ) -> [PrivacyAndSecurityEntry] {
+     var entries: [PrivacyAndSecurityEntry] = []
+     
+@@ -745,6 +762,7 @@ private func privacyAndSecurityControllerEntries(
+         entries.append(.profilePhotoPrivacy(presentationData.theme, presentationData.strings.Privacy_ProfilePhoto, stringForSelectiveSettings(strings: presentationData.strings, settings: privacySettings.profilePhoto)))
+         entries.append(.bioPrivacy(presentationData.theme, presentationData.strings.Privacy_Bio, stringForSelectiveSettings(strings: presentationData.strings, settings: privacySettings.bio)))
+         entries.append(.giftsAutoSavePrivacy(presentationData.theme, presentationData.strings.Privacy_Gifts, stringForSelectiveSettings(strings: presentationData.strings, settings: privacySettings.giftsAutoSave)))
++        entries.append(.profileCommentsPrivacy(presentationData.theme, ProfileCommentsStrings.title, profileCommentsValue))
+         entries.append(.birthdayPrivacy(presentationData.theme, presentationData.strings.Privacy_Birthday, stringForSelectiveSettings(strings: presentationData.strings, settings: privacySettings.birthday)))
+         entries.append(.savedMusicPrivacy(presentationData.theme, presentationData.strings.Privacy_SavedMusic, stringForSelectiveSettings(strings: presentationData.strings, settings: privacySettings.savedMusic)))
+         entries.append(.forwardPrivacy(presentationData.theme, presentationData.strings.Privacy_Forwards, stringForSelectiveSettings(strings: presentationData.strings, settings: privacySettings.forwards)))
+@@ -775,6 +793,7 @@ private func privacyAndSecurityControllerEntries(
+         entries.append(.profilePhotoPrivacy(presentationData.theme, presentationData.strings.Privacy_ProfilePhoto, presentationData.strings.Channel_NotificationLoading))
+         entries.append(.bioPrivacy(presentationData.theme, presentationData.strings.Privacy_GroupsAndChannels, presentationData.strings.Channel_NotificationLoading))
+         entries.append(.giftsAutoSavePrivacy(presentationData.theme, presentationData.strings.Privacy_Gifts, presentationData.strings.Channel_NotificationLoading))
++        entries.append(.profileCommentsPrivacy(presentationData.theme, ProfileCommentsStrings.title, profileCommentsValue))
+         entries.append(.birthdayPrivacy(presentationData.theme, presentationData.strings.Privacy_Birthday, presentationData.strings.Channel_NotificationLoading))
+         entries.append(.savedMusicPrivacy(presentationData.theme, presentationData.strings.Privacy_SavedMusic, presentationData.strings.Channel_NotificationLoading))
+         entries.append(.forwardPrivacy(presentationData.theme, presentationData.strings.Privacy_Forwards, presentationData.strings.Channel_NotificationLoading))
+@@ -1558,6 +1577,8 @@ public func privacyAndSecurityController(
+                 }), true)
+             }
+         }))
++    }, openProfileComments: {
++        pushControllerImpl?(profileCommentsSettingsController(context: context), true)
+     })
+     
+     actionsDisposable.add(context.engine.peers.managedUpdatedRecentPeers().start())
+@@ -1601,9 +1622,10 @@ public func privacyAndSecurityController(
+         combineLatest(passkeys.get(), passkeysDataValue.get()),
+         context.engine.data.subscribe(TelegramEngine.EngineData.Item.Configuration.App()),
+         context.engine.data.subscribe(TelegramEngine.EngineData.Item.Peer.Peer(id: context.account.peerId)),
+-        loginEmail
++        combineLatest(loginEmail, profileCommentsPrivacyValueSignal(context: context))
+     )
+-    |> map { presentationData, state, privacySettings, noticeView, webBrowserData, recentPeers, blockedPeersState, activeWebsitesState, accessChallengeData, twoStepAuth, passkeys, appConfiguration, accountPeer, loginEmail -> (ItemListControllerState, (ItemListNodeState, Any)) in
++    |> map { presentationData, state, privacySettings, noticeView, webBrowserData, recentPeers, blockedPeersState, activeWebsitesState, accessChallengeData, twoStepAuth, passkeys, appConfiguration, accountPeer, loginEmailAndProfileComments -> (ItemListControllerState, (ItemListNodeState, Any)) in
++        let (loginEmail, profileCommentsValue) = loginEmailAndProfileComments
+         var canAutoarchive = false
+         if let data = appConfiguration.data, let hasAutoarchive = data["autoarchive_setting_available"] as? Bool {
+             canAutoarchive = hasAutoarchive
+@@ -1637,7 +1659,7 @@ public func privacyAndSecurityController(
+             defaultWebBrowser = presentationData.strings.WebBrowser_Telegram
+         }
+         
+-        let listState = ItemListNodeState(presentationData: ItemListPresentationData(presentationData), entries: privacyAndSecurityControllerEntries(presentationData: presentationData, state: state, privacySettings: privacySettings, accessChallengeData: accessChallengeData.data, blockedPeerCount: blockedPeersState.totalCount, activeWebsitesCount: activeWebsitesState.sessions.count, hasTwoStepAuth: twoStepAuth.0, twoStepAuthData: twoStepAuth.1, hasPasskeys: passkeys.0, displayPasskeys: displayPasskeys, canAutoarchive: canAutoarchive, isPremiumDisabled: isPremiumDisabled, isPremium: isPremium, loginEmail: loginEmail, accountPeer: accountPeer, defaultWebBrowser: defaultWebBrowser, appConfiguration: appConfiguration), style: .blocks, ensureVisibleItemTag: focusOnItemTag, animateChanges: false)
++        let listState = ItemListNodeState(presentationData: ItemListPresentationData(presentationData), entries: privacyAndSecurityControllerEntries(presentationData: presentationData, state: state, privacySettings: privacySettings, accessChallengeData: accessChallengeData.data, blockedPeerCount: blockedPeersState.totalCount, activeWebsitesCount: activeWebsitesState.sessions.count, hasTwoStepAuth: twoStepAuth.0, twoStepAuthData: twoStepAuth.1, hasPasskeys: passkeys.0, displayPasskeys: displayPasskeys, canAutoarchive: canAutoarchive, isPremiumDisabled: isPremiumDisabled, isPremium: isPremium, loginEmail: loginEmail, accountPeer: accountPeer, defaultWebBrowser: defaultWebBrowser, appConfiguration: appConfiguration, profileCommentsValue: profileCommentsValue), style: .blocks, ensureVisibleItemTag: focusOnItemTag, animateChanges: false)
+         
+         return (controllerState, (listState, arguments))
+     }
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoPaneNode/Sources/PeerInfoPaneNode.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoPaneNode/Sources/PeerInfoPaneNode.swift
+index af76c97..3389df7 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoPaneNode/Sources/PeerInfoPaneNode.swift
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoPaneNode/Sources/PeerInfoPaneNode.swift
+@@ -23,6 +23,7 @@ public enum PeerInfoPaneKey: Int32 {
+     case similarChannels
+     case similarBots
+     case storyArchive
++    case comments
+     
+     public init(tab: TelegramProfileTab) {
+         switch tab {
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
+index 4801bd4..499e813 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/BUILD
+@@ -11,6 +11,7 @@ swift_library(
+     ],
+     deps = [
+         "//submodules/UrlWhitelist",
++        "//submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI",
+         "//submodules/AccountContext",
+         "//submodules/LottieSettings:LottieSettings",
+         "//submodules/AccountUtils",
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoData.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoData.swift
+index 59892f6..9f714d8 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoData.swift
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoData.swift
+@@ -15,6 +15,7 @@ import DeviceAccess
+ import PeerInfoVisualMediaPaneNode
+ import PhotoResources
+ import PeerInfoPaneNode
++import ProfileCommentsUI
+ import WebUI
+ import WalletContext
+ 
+@@ -1582,6 +1583,7 @@ func peerInfoScreenData(
+                             availablePanes?.insert(.gifts, at: 1)
+                         }
+                     }
++                    peerInfoInsertProfileComments(context: context, peerView: peerView, availablePanes: &availablePanes)
+                     if let hasStoryArchive, hasStoryArchive {
+                         availablePanes?.append(.storyArchive)
+                     }
+@@ -1596,6 +1598,10 @@ func peerInfoScreenData(
+                         }
+                     }
+                     
++                    if case .peer = chatLocation {
++                        peerInfoInsertProfileComments(context: context, peerView: peerView, availablePanes: &availablePanes)
++                    }
++                    
+                     if availablePanes != nil, groupsInCommon != nil, let cachedData = peerView.cachedData as? CachedUserData {
+                         if cachedData.commonGroupCount != 0 {
+                             availablePanes?.append(.groupsInCommon)
+@@ -2895,3 +2901,18 @@ private func isPremiumRequiredForStoryPosting(context: AccountContext) -> Signal
+         }
+     )
+ }
++
++/// Adds the Profile Comments tab right after Posts and Gifts on regular user profiles.
++private func peerInfoInsertProfileComments(context: AccountContext, peerView: PeerView, availablePanes: inout [PeerInfoPaneKey]?) {
++    guard availablePanes != nil, let user = peerView.peers[peerView.peerId] as? TelegramUser, user.botInfo == nil, !user.flags.contains(.isSupport) else {
++        return
++    }
++    if availablePanes?.contains(.comments) == true {
++        return
++    }
++    guard ProfileCommentsStore.shared(accountPeerId: context.account.peerId).isTabVisible(ownerId: peerView.peerId) else {
++        return
++    }
++    let index = (availablePanes ?? []).prefix(while: { $0 == .stories || $0 == .gifts }).count
++    availablePanes?.insert(.comments, at: index)
++}
+diff --git a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoPaneContainerNode.swift b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoPaneContainerNode.swift
+index 7b2e038..6424a1e 100644
+--- a/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoPaneContainerNode.swift
++++ b/submodules/TelegramUI/Components/PeerInfo/PeerInfoScreen/Sources/PeerInfoPaneContainerNode.swift
+@@ -10,6 +10,7 @@ import ContextUI
+ import ChatControllerInteraction
+ import PeerInfoVisualMediaPaneNode
+ import PeerInfoPaneNode
++import ProfileCommentsUI
+ import PeerInfoChatListPaneNode
+ import PeerInfoChatPaneNode
+ import TextFormat
+@@ -558,6 +559,10 @@ private final class PeerInfoPendingPane {
+             paneNode = PeerInfoChatPaneNode(context: context, chatLocation: .replyThread(message: ChatReplyThreadMessage(peerId: context.account.peerId, threadId: peerId.toInt64(), channelMessageId: nil, isChannelPost: false, isForumPost: false, isMonoforumPost: false, maxMessage: nil, maxReadIncomingMessageId: nil, maxReadOutgoingMessageId: nil, unreadCount: 0, initialFilledHoles: IndexSet(), initialAnchor: .automatic, isNotAvailable: false)), tag: nil, hideTopPanels: true, navigationController: chatControllerInteraction.navigationController)
+         case .polls:
+             paneNode = PeerInfoChatPaneNode(context: context, chatLocation: .peer(id: peerId), tag: .polls, navigationController: chatControllerInteraction.navigationController)
++        case .comments:
++            paneNode = ProfileCommentsPaneNode(context: context, ownerId: data.peer?.id ?? peerId, openPeer: { [weak chatControllerInteraction] peer in
++                chatControllerInteraction?.openPeer(peer, .chat(textInputState: nil, subject: nil, peekData: nil), nil, .default)
++            })
+         }
+         paneNode.externalDataUpdated = externalDataUpdated
+         paneNode.parentController = parentController
+@@ -1315,6 +1320,8 @@ final class PeerInfoPaneContainerNode: ASDisplayNode, ASGestureRecognizerDelegat
+                         canReorder = true
+                     case .polls:
+                         content = .title(HorizontalTabsComponent.Tab.Title(text: presentationData.strings.PeerInfo_PanePolls, entities: [], enableAnimations: false))
++                    case .comments:
++                        content = .title(HorizontalTabsComponent.Tab.Title(text: ProfileCommentsStrings.tab, entities: [], enableAnimations: false))
+                     }
+                     
+                     return HorizontalTabsComponent.Tab(
+diff --git a/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/BUILD b/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/BUILD
+new file mode 100644
+index 0000000..7276784
+--- /dev/null
++++ b/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/BUILD
+@@ -0,0 +1,26 @@
++load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
++
++swift_library(
++    name = "ProfileCommentsUI",
++    module_name = "ProfileCommentsUI",
++    srcs = glob([
++        "Sources/**/*.swift",
++    ]),
++    deps = [
++        "//submodules/SSignalKit/SwiftSignalKit",
++        "//submodules/AsyncDisplayKit",
++        "//submodules/Display",
++        "//submodules/TelegramCore",
++        "//submodules/TelegramPresentationData",
++        "//submodules/AccountContext",
++        "//submodules/AvatarNode",
++        "//submodules/ItemListUI",
++        "//submodules/PresentationDataUtils",
++        "//submodules/TextFormat",
++        "//submodules/UndoUI",
++        "//submodules/TelegramUI/Components/PeerInfo/PeerInfoPaneNode",
++    ],
++    visibility = [
++        "//visibility:public",
++    ],
++)
+diff --git a/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentComposeController.swift b/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentComposeController.swift
+new file mode 100644
+index 0000000..5c8de92
+--- /dev/null
++++ b/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentComposeController.swift
+@@ -0,0 +1,377 @@
++import Foundation
++import UIKit
++import Display
++import TelegramCore
++import TelegramPresentationData
++import AccountContext
++import AvatarNode
++
++/// Sheet for writing a comment (visitor) or replying to one (owner).
++final class ProfileCommentComposeController: UIViewController, UITextViewDelegate {
++    enum Mode {
++        case comment(ownerFirstName: String, approval: Bool)
++        case reply(authorFirstName: String, quote: String, existing: String?)
++    }
++
++    private let mode: Mode
++    private let context: AccountContext
++    private let theme: PresentationTheme
++    private let selfPeer: EnginePeer?
++    private let onMessage: (() -> Void)?
++    /// Returns an error to show, or nil when the text was accepted.
++    private let completion: (String, [String]) -> String?
++
++    private var selectedTags: [String] = []
++
++    private let scrollView = UIScrollView()
++    private let avatarNode = AvatarNode(font: avatarPlaceholderFont(size: 16.0))
++    private let titleLabel = UILabel()
++    private let subtitleLabel = UILabel()
++    private let tagsTitleLabel = UILabel()
++    private let tagsView = TagFlowView()
++    private let fieldContainer = UIView()
++    private let textView = UITextView()
++    private let placeholderLabel = UILabel()
++    private let counterLabel = UILabel()
++    private let noteIcon = UIImageView()
++    private let noteLabel = UILabel()
++    private let messageButton = UIButton(type: .system)
++    private let errorLabel = UILabel()
++    private let postButton = UIButton(type: .system)
++
++    private var isReply: Bool {
++        if case .reply = self.mode {
++            return true
++        }
++        return false
++    }
++
++    init(mode: Mode, context: AccountContext, theme: PresentationTheme, selfPeer: EnginePeer?, onMessage: (() -> Void)?, completion: @escaping (String, [String]) -> String?) {
++        self.mode = mode
++        self.context = context
++        self.theme = theme
++        self.selfPeer = selfPeer
++        self.onMessage = onMessage
++        self.completion = completion
++        super.init(nibName: nil, bundle: nil)
++    }
++
++    required init?(coder: NSCoder) {
++        fatalError("init(coder:) has not been implemented")
++    }
++
++    override func viewDidLoad() {
++        super.viewDidLoad()
++        let theme = self.theme
++        self.view.backgroundColor = theme.list.blocksBackgroundColor
++        self.overrideUserInterfaceStyle = theme.overallDarkAppearance ? .dark : .light
++
++        self.scrollView.alwaysBounceVertical = true
++        self.scrollView.keyboardDismissMode = .interactive
++        self.view.addSubview(self.scrollView)
++
++        self.scrollView.addSubview(self.avatarNode.view)
++        if let selfPeer = self.selfPeer {
++            self.avatarNode.setPeer(context: self.context, theme: theme, peer: selfPeer, displayDimensions: CGSize(width: 40.0, height: 40.0))
++        }
++
++        self.titleLabel.font = Font.semibold(18.0)
++        self.titleLabel.textColor = theme.list.itemPrimaryTextColor
++        self.titleLabel.numberOfLines = 2
++        self.scrollView.addSubview(self.titleLabel)
++
++        self.subtitleLabel.font = Font.regular(13.0)
++        self.subtitleLabel.textColor = theme.list.itemSecondaryTextColor
++        self.subtitleLabel.numberOfLines = 2
++        self.scrollView.addSubview(self.subtitleLabel)
++
++        self.tagsTitleLabel.font = Font.semibold(14.0)
++        self.tagsTitleLabel.textColor = theme.list.itemPrimaryTextColor
++        self.scrollView.addSubview(self.tagsTitleLabel)
++        self.scrollView.addSubview(self.tagsView)
++
++        self.fieldContainer.backgroundColor = theme.list.itemBlocksBackgroundColor
++        self.fieldContainer.layer.cornerRadius = 12.0
++        self.scrollView.addSubview(self.fieldContainer)
++
++        self.textView.font = Font.regular(16.0)
++        self.textView.textColor = theme.list.itemPrimaryTextColor
++        self.textView.backgroundColor = .clear
++        self.textView.tintColor = theme.list.itemAccentColor
++        self.textView.delegate = self
++        self.textView.textContainerInset = UIEdgeInsets(top: 12.0, left: 10.0, bottom: 24.0, right: 10.0)
++        self.textView.keyboardAppearance = theme.overallDarkAppearance ? .dark : .light
++        self.fieldContainer.addSubview(self.textView)
++
++        self.placeholderLabel.font = Font.regular(16.0)
++        self.placeholderLabel.textColor = theme.list.itemPlaceholderTextColor
++        self.placeholderLabel.numberOfLines = 0
++        self.fieldContainer.addSubview(self.placeholderLabel)
++
++        self.counterLabel.font = Font.regular(12.0)
++        self.counterLabel.textAlignment = .right
++        self.fieldContainer.addSubview(self.counterLabel)
++
++        self.noteIcon.tintColor = theme.list.itemSecondaryTextColor
++        self.noteIcon.contentMode = .center
++        self.scrollView.addSubview(self.noteIcon)
++
++        self.noteLabel.font = Font.regular(13.0)
++        self.noteLabel.textColor = theme.list.itemSecondaryTextColor
++        self.noteLabel.numberOfLines = 0
++        self.scrollView.addSubview(self.noteLabel)
++
++        self.messageButton.titleLabel?.font = Font.semibold(13.0)
++        self.messageButton.setTitleColor(theme.list.itemAccentColor, for: .normal)
++        self.messageButton.contentHorizontalAlignment = .left
++        self.messageButton.addTarget(self, action: #selector(self.messagePressed), for: .touchUpInside)
++        self.scrollView.addSubview(self.messageButton)
++
++        self.errorLabel.font = Font.regular(13.0)
++        self.errorLabel.textColor = theme.list.itemDestructiveColor
++        self.errorLabel.numberOfLines = 0
++        self.errorLabel.isHidden = true
++        self.scrollView.addSubview(self.errorLabel)
++
++        self.postButton.titleLabel?.font = Font.semibold(17.0)
++        self.postButton.backgroundColor = theme.list.itemCheckColors.fillColor
++        self.postButton.setTitleColor(theme.list.itemCheckColors.foregroundColor, for: .normal)
++        self.postButton.layer.cornerRadius = 12.0
++        self.postButton.addTarget(self, action: #selector(self.postPressed), for: .touchUpInside)
++        self.scrollView.addSubview(self.postButton)
++
++        switch self.mode {
++        case let .comment(ownerFirstName, approval):
++            self.titleLabel.text = ProfileCommentsStrings.sheetTitle(ownerFirstName)
++            self.subtitleLabel.text = approval ? ProfileCommentsStrings.sheetSubApproval(ownerFirstName) : ProfileCommentsStrings.sheetSubPublic
++            self.tagsTitleLabel.text = ProfileCommentsStrings.sheetTags(ownerFirstName)
++            self.placeholderLabel.text = ProfileCommentsStrings.sheetHint(ownerFirstName)
++            self.noteIcon.image = UIImage(systemName: "clock")
++            self.noteLabel.text = ProfileCommentsStrings.sheetNote(ownerFirstName)
++            self.messageButton.setTitle(ProfileCommentsStrings.message(ownerFirstName), for: .normal)
++            self.postButton.setTitle(ProfileCommentsStrings.sheetPost, for: .normal)
++            self.tagsView.configure(tags: ProfileCommentsStore.tags, theme: theme, onToggle: { [weak self] id in
++                self?.toggleTag(id)
++            })
++        case let .reply(authorFirstName, quote, existing):
++            self.titleLabel.text = existing == nil ? ProfileCommentsStrings.replyTo(authorFirstName) : ProfileCommentsStrings.editReplyTo(authorFirstName)
++            let short = quote.count > 70 ? String(quote.prefix(70)) + "…" : quote
++            self.subtitleLabel.text = "“\(short)”"
++            self.tagsTitleLabel.isHidden = true
++            self.tagsView.isHidden = true
++            self.placeholderLabel.text = ProfileCommentsStrings.replyHint(authorFirstName)
++            self.noteIcon.image = UIImage(systemName: "lock")
++            self.noteLabel.text = ProfileCommentsStrings.replyNote(authorFirstName)
++            self.messageButton.isHidden = true
++            self.postButton.setTitle(ProfileCommentsStrings.replyPost, for: .normal)
++            self.textView.text = existing
++        }
++        self.updateTextState()
++        self.updateTags()
++    }
++
++    override func viewDidAppear(_ animated: Bool) {
++        super.viewDidAppear(animated)
++        self.textView.becomeFirstResponder()
++    }
++
++    override func viewDidLayoutSubviews() {
++        super.viewDidLayoutSubviews()
++        let width = self.view.bounds.width
++        let side: CGFloat = 20.0
++        let inner = width - side * 2.0
++        self.scrollView.frame = self.view.bounds
++
++        var y: CGFloat = 28.0
++        self.avatarNode.frame = CGRect(x: side, y: y, width: 40.0, height: 40.0)
++        let titleWidth = inner - 52.0
++        let titleSize = self.titleLabel.sizeThatFits(CGSize(width: titleWidth, height: .greatestFiniteMagnitude))
++        let subtitleSize = self.subtitleLabel.sizeThatFits(CGSize(width: titleWidth, height: .greatestFiniteMagnitude))
++        let headerHeight = max(40.0, ceil(titleSize.height) + 2.0 + ceil(subtitleSize.height))
++        let titleY = y + (headerHeight - ceil(titleSize.height) - 2.0 - ceil(subtitleSize.height)) / 2.0
++        self.titleLabel.frame = CGRect(x: side + 52.0, y: titleY, width: titleWidth, height: ceil(titleSize.height))
++        self.subtitleLabel.frame = CGRect(x: side + 52.0, y: self.titleLabel.frame.maxY + 2.0, width: titleWidth, height: ceil(subtitleSize.height))
++        y += headerHeight + 18.0
++
++        if !self.tagsView.isHidden {
++            self.tagsTitleLabel.frame = CGRect(x: side, y: y, width: inner, height: 18.0)
++            y += 28.0
++            let tagsHeight = self.tagsView.layout(width: inner)
++            self.tagsView.frame = CGRect(x: side, y: y, width: inner, height: tagsHeight)
++            y += tagsHeight + 18.0
++        }
++
++        let fieldHeight: CGFloat = 132.0
++        self.fieldContainer.frame = CGRect(x: side - 4.0, y: y, width: inner + 8.0, height: fieldHeight)
++        self.textView.frame = self.fieldContainer.bounds
++        let placeholderSize = self.placeholderLabel.sizeThatFits(CGSize(width: inner - 24.0, height: .greatestFiniteMagnitude))
++        self.placeholderLabel.frame = CGRect(x: 15.0, y: 12.0, width: inner - 24.0, height: ceil(placeholderSize.height))
++        self.counterLabel.frame = CGRect(x: 0.0, y: fieldHeight - 22.0, width: self.fieldContainer.bounds.width - 12.0, height: 16.0)
++        y += fieldHeight + 12.0
++
++        self.noteIcon.frame = CGRect(x: side, y: y, width: 18.0, height: 18.0)
++        let noteSize = self.noteLabel.sizeThatFits(CGSize(width: inner - 26.0, height: .greatestFiniteMagnitude))
++        self.noteLabel.frame = CGRect(x: side + 26.0, y: y, width: inner - 26.0, height: ceil(noteSize.height))
++        y += ceil(noteSize.height)
++        if !self.messageButton.isHidden {
++            self.messageButton.frame = CGRect(x: side + 26.0, y: y + 2.0, width: inner - 26.0, height: 24.0)
++            y += 28.0
++        }
++
++        if !self.errorLabel.isHidden {
++            let errorSize = self.errorLabel.sizeThatFits(CGSize(width: inner, height: .greatestFiniteMagnitude))
++            self.errorLabel.frame = CGRect(x: side, y: y + 8.0, width: inner, height: ceil(errorSize.height))
++            y += ceil(errorSize.height) + 8.0
++        }
++
++        y += 18.0
++        self.postButton.frame = CGRect(x: side - 4.0, y: y, width: inner + 8.0, height: 50.0)
++        y += 50.0 + 20.0
++        self.scrollView.contentSize = CGSize(width: width, height: y)
++    }
++
++    private func toggleTag(_ id: String) {
++        if let index = self.selectedTags.firstIndex(of: id) {
++            self.selectedTags.remove(at: index)
++        } else if self.selectedTags.count < ProfileCommentsStore.maxTags {
++            self.selectedTags.append(id)
++        } else {
++            UINotificationFeedbackGenerator().notificationOccurred(.warning)
++            return
++        }
++        UISelectionFeedbackGenerator().selectionChanged()
++        self.updateTags()
++    }
++
++    private func updateTags() {
++        self.tagsView.update(selected: self.selectedTags, limitReached: self.selectedTags.count >= ProfileCommentsStore.maxTags, theme: self.theme)
++        self.view.setNeedsLayout()
++    }
++
++    private func updateTextState() {
++        let text = self.textView.text ?? ""
++        self.placeholderLabel.isHidden = !text.isEmpty
++        let left = ProfileCommentsStore.maxLength - text.count
++        self.counterLabel.text = "\(left)"
++        self.counterLabel.textColor = left < 20 ? self.theme.list.itemDestructiveColor : self.theme.list.itemSecondaryTextColor
++        let enabled = self.isReply || text.trimmingCharacters(in: .whitespacesAndNewlines).count >= ProfileCommentsStore.minLength
++        self.postButton.isEnabled = enabled
++        self.postButton.alpha = enabled ? 1.0 : 0.5
++        if !self.errorLabel.isHidden {
++            self.errorLabel.isHidden = true
++            self.view.setNeedsLayout()
++        }
++    }
++
++    func textViewDidChange(_ textView: UITextView) {
++        self.updateTextState()
++    }
++
++    func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
++        let current = (textView.text ?? "") as NSString
++        let updated = current.replacingCharacters(in: range, with: text)
++        return updated.count <= ProfileCommentsStore.maxLength
++    }
++
++    @objc private func messagePressed() {
++        let onMessage = self.onMessage
++        self.dismiss(animated: true, completion: {
++            onMessage?()
++        })
++    }
++
++    @objc private func postPressed() {
++        let text = (self.textView.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
++        if let error = self.completion(text, self.selectedTags) {
++            self.errorLabel.text = error
++            self.errorLabel.isHidden = false
++            UINotificationFeedbackGenerator().notificationOccurred(.error)
++            self.view.setNeedsLayout()
++            return
++        }
++        self.textView.resignFirstResponder()
++        self.dismiss(animated: true)
++    }
++
++    /// Presents the sheet above whatever is on screen.
++    static func present(_ controller: ProfileCommentComposeController, from view: UIView) {
++        guard var top = view.window?.rootViewController else {
++            return
++        }
++        while let presented = top.presentedViewController {
++            top = presented
++        }
++        controller.modalPresentationStyle = .pageSheet
++        if let sheet = controller.sheetPresentationController {
++            sheet.detents = [.medium(), .large()]
++            sheet.prefersGrabberVisible = true
++            if #available(iOS 16.0, *) {
++                sheet.preferredCornerRadius = 16.0
++            }
++        }
++        top.present(controller, animated: true)
++    }
++}
++
++/// Chips that wrap onto new lines.
++final class TagFlowView: UIView {
++    private var buttons: [UIButton] = []
++    private var onToggle: ((String) -> Void)?
++
++    func configure(tags: [ProfileCommentsStore.Tag], theme: PresentationTheme, onToggle: @escaping (String) -> Void) {
++        self.onToggle = onToggle
++        for button in self.buttons {
++            button.removeFromSuperview()
++        }
++        self.buttons = tags.map { tag in
++            let button = UIButton(type: .custom)
++            button.accessibilityIdentifier = tag.id
++            button.setTitle("\(tag.emoji)  \(tag.title)", for: .normal)
++            button.titleLabel?.font = Font.regular(14.0)
++            button.layer.cornerRadius = 17.0
++            button.addTarget(self, action: #selector(self.pressed(_:)), for: .touchUpInside)
++            self.addSubview(button)
++            return button
++        }
++    }
++
++    func update(selected: [String], limitReached: Bool, theme: PresentationTheme) {
++        for button in self.buttons {
++            let on = selected.contains(button.accessibilityIdentifier ?? "")
++            button.isSelected = on
++            button.titleLabel?.font = on ? Font.semibold(14.0) : Font.regular(14.0)
++            button.setTitleColor(on ? theme.list.itemAccentColor : theme.list.itemPrimaryTextColor, for: .normal)
++            button.setTitleColor(on ? theme.list.itemAccentColor : theme.list.itemPrimaryTextColor, for: .selected)
++            button.backgroundColor = on ? theme.list.itemAccentColor.withAlphaComponent(0.14) : theme.list.itemBlocksBackgroundColor
++            button.alpha = !on && limitReached ? 0.45 : 1.0
++            button.accessibilityTraits = on ? [.button, .selected] : [.button]
++        }
++        self.setNeedsLayout()
++    }
++
++    /// Lays the chips out for the given width and returns the height.
++    func layout(width: CGFloat) -> CGFloat {
++        var x: CGFloat = 0.0
++        var y: CGFloat = 0.0
++        let height: CGFloat = 34.0
++        for button in self.buttons {
++            let title = button.title(for: .normal) ?? ""
++            let font = button.isSelected ? Font.semibold(14.0) : Font.regular(14.0)
++            let textWidth = ceil((title as NSString).size(withAttributes: [.font: font]).width)
++            let buttonWidth = min(width, textWidth + 24.0)
++            if x > 0.0 && x + buttonWidth > width {
++                x = 0.0
++                y += height + 8.0
++            }
++            button.frame = CGRect(x: x, y: y, width: buttonWidth, height: height)
++            x += buttonWidth + 8.0
++        }
++        return self.buttons.isEmpty ? 0.0 : y + height
++    }
++
++    @objc private func pressed(_ sender: UIButton) {
++        if let id = sender.accessibilityIdentifier {
++            self.onToggle?(id)
++        }
++    }
++}
+diff --git a/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentItemView.swift b/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentItemView.swift
+new file mode 100644
+index 0000000..4274abb
+--- /dev/null
++++ b/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentItemView.swift
+@@ -0,0 +1,340 @@
++import Foundation
++import UIKit
++import Display
++import TelegramCore
++import TelegramPresentationData
++import AccountContext
++import AvatarNode
++
++/// One comment on the wall: author, tags, text, reactions and the owner's reply.
++final class ProfileCommentItemView: UIView {
++    struct Item {
++        let comment: ProfileCommentsStore.Comment
++        let authorPeer: EnginePeer?
++        let authorName: String
++        let ownerPeer: EnginePeer?
++        let ownerName: String
++        let isOwnerView: Bool
++        let isMine: Bool
++        let isPendingSection: Bool
++        let myReactions: Set<String>
++        let showDivider: Bool
++    }
++
++    var onTap: ((ProfileCommentItemView) -> Void)?
++    var onDoubleTap: ((ProfileCommentItemView) -> Void)?
++    var onReaction: ((String) -> Void)?
++    var onApprove: (() -> Void)?
++    var onDismiss: (() -> Void)?
++
++    private(set) var item: Item?
++
++    private let avatarNode = AvatarNode(font: avatarPlaceholderFont(size: 16.0))
++    private let nameLabel = UILabel()
++    private let pinView = UIImageView()
++    private let dateLabel = UILabel()
++    private let tagsLabel = UILabel()
++    private let statusLabel = PaddedLabel()
++    private let textLabel = UILabel()
++    private var reactionButtons: [UIButton] = []
++    private let replyView = UIView()
++    private let replyBar = UIView()
++    private let replyAvatarNode = AvatarNode(font: avatarPlaceholderFont(size: 8.0))
++    private let replyTitleLabel = UILabel()
++    private let replyTextLabel = UILabel()
++    private let approveButton = UIButton(type: .system)
++    private let dismissButton = UIButton(type: .system)
++    private let divider = UIView()
++    private var bumpEmoji: String?
++
++    override init(frame: CGRect) {
++        super.init(frame: frame)
++
++        self.addSubview(self.avatarNode.view)
++
++        self.nameLabel.font = Font.semibold(15.0)
++        self.nameLabel.lineBreakMode = .byTruncatingTail
++        self.addSubview(self.nameLabel)
++
++        self.pinView.image = UIImage(systemName: "pin.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 11.0, weight: .semibold))
++        self.pinView.contentMode = .center
++        self.addSubview(self.pinView)
++
++        self.dateLabel.font = Font.regular(13.0)
++        self.addSubview(self.dateLabel)
++
++        self.tagsLabel.font = Font.regular(13.0)
++        self.tagsLabel.numberOfLines = 0
++        self.addSubview(self.tagsLabel)
++
++        self.statusLabel.font = Font.semibold(12.0)
++        self.statusLabel.layer.cornerRadius = 6.0
++        self.statusLabel.clipsToBounds = true
++        self.addSubview(self.statusLabel)
++
++        self.textLabel.font = Font.regular(15.0)
++        self.textLabel.numberOfLines = 0
++        self.addSubview(self.textLabel)
++
++        self.replyView.layer.cornerRadius = 8.0
++        self.replyView.clipsToBounds = true
++        self.replyView.addSubview(self.replyBar)
++        self.replyView.addSubview(self.replyAvatarNode.view)
++        self.replyTitleLabel.font = Font.semibold(13.0)
++        self.replyTitleLabel.lineBreakMode = .byTruncatingTail
++        self.replyView.addSubview(self.replyTitleLabel)
++        self.replyTextLabel.font = Font.regular(14.0)
++        self.replyTextLabel.numberOfLines = 0
++        self.replyView.addSubview(self.replyTextLabel)
++        self.addSubview(self.replyView)
++
++        for button in [self.approveButton, self.dismissButton] {
++            button.titleLabel?.font = Font.semibold(14.0)
++            button.layer.cornerRadius = 9.0
++            button.clipsToBounds = true
++            self.addSubview(button)
++        }
++        self.approveButton.setTitle(ProfileCommentsStrings.approve, for: .normal)
++        self.dismissButton.setTitle(ProfileCommentsStrings.dismiss, for: .normal)
++        self.approveButton.addTarget(self, action: #selector(self.approvePressed), for: .touchUpInside)
++        self.dismissButton.addTarget(self, action: #selector(self.dismissPressed), for: .touchUpInside)
++
++        self.addSubview(self.divider)
++
++        let doubleTap = UITapGestureRecognizer(target: self, action: #selector(self.handleDoubleTap))
++        doubleTap.numberOfTapsRequired = 2
++        self.addGestureRecognizer(doubleTap)
++        let tap = UITapGestureRecognizer(target: self, action: #selector(self.handleTap))
++        tap.require(toFail: doubleTap)
++        self.addGestureRecognizer(tap)
++        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(self.handleLongPress(_:)))
++        self.addGestureRecognizer(longPress)
++
++        self.isAccessibilityElement = false
++    }
++
++    required init?(coder: NSCoder) {
++        fatalError("init(coder:) has not been implemented")
++    }
++
++    @objc private func handleTap() {
++        self.onTap?(self)
++    }
++
++    @objc private func handleDoubleTap() {
++        self.onDoubleTap?(self)
++    }
++
++    @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
++        if recognizer.state == .began {
++            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
++            self.onTap?(self)
++        }
++    }
++
++    @objc private func approvePressed() {
++        self.onApprove?()
++    }
++
++    @objc private func dismissPressed() {
++        self.onDismiss?()
++    }
++
++    @objc private func reactionPressed(_ sender: UIButton) {
++        guard let emoji = sender.accessibilityIdentifier else {
++            return
++        }
++        self.onReaction?(emoji)
++    }
++
++    /// Next update animates the pill for this reaction.
++    func bumpReaction(_ emoji: String) {
++        self.bumpEmoji = emoji
++    }
++
++    /// Lays out for the given width and returns the height.
++    func update(item: Item, context: AccountContext, theme: PresentationTheme, width: CGFloat) -> CGFloat {
++        self.item = item
++        let comment = item.comment
++        let dimmed = !(comment.status == .approved || item.isPendingSection)
++
++        let leftInset: CGFloat = 16.0
++        let contentLeft: CGFloat = 68.0
++        let rightInset: CGFloat = 16.0
++        let contentWidth = max(1.0, width - contentLeft - rightInset)
++        var y: CGFloat = 12.0
++
++        // Avatar
++        self.avatarNode.frame = CGRect(x: leftInset, y: y, width: 40.0, height: 40.0)
++        if let peer = item.authorPeer {
++            self.avatarNode.setPeer(context: context, theme: theme, peer: peer, displayDimensions: CGSize(width: 40.0, height: 40.0))
++        } else {
++            let parts = item.authorName.split(separator: " ").prefix(2).map { String($0.prefix(1)).uppercased() }
++            self.avatarNode.setCustomLetters(parts.isEmpty ? ["?"] : parts)
++        }
++        self.avatarNode.view.alpha = dimmed ? 0.55 : 1.0
++
++        // Name, pin, date
++        self.dateLabel.text = ProfileCommentsStore.formatAgo(comment.date)
++        self.dateLabel.textColor = theme.list.itemSecondaryTextColor
++        let dateSize = self.dateLabel.sizeThatFits(CGSize(width: contentWidth, height: 20.0))
++        let showPin = comment.pinned && comment.status == .approved
++        self.pinView.isHidden = !showPin
++        self.pinView.tintColor = theme.list.itemAccentColor
++        let pinWidth: CGFloat = showPin ? 18.0 : 0.0
++
++        self.nameLabel.text = item.isMine && !item.isOwnerView ? ProfileCommentsStrings.you : item.authorName
++        self.nameLabel.textColor = theme.list.itemPrimaryTextColor
++        let nameMax = max(10.0, contentWidth - dateSize.width - pinWidth - 6.0)
++        let nameSize = self.nameLabel.sizeThatFits(CGSize(width: nameMax, height: 22.0))
++        self.nameLabel.frame = CGRect(x: contentLeft, y: y - 1.0, width: min(nameMax, nameSize.width), height: 20.0)
++        self.dateLabel.frame = CGRect(x: width - rightInset - dateSize.width, y: y, width: dateSize.width, height: 18.0)
++        self.pinView.frame = CGRect(x: self.dateLabel.frame.minX - pinWidth, y: y, width: 16.0, height: 18.0)
++        y += 21.0
++
++        // Tags
++        let tagLine = ProfileCommentsStore.tagLine(comment)
++        self.tagsLabel.isHidden = tagLine.isEmpty
++        if !tagLine.isEmpty {
++            self.tagsLabel.text = tagLine
++            self.tagsLabel.textColor = theme.list.itemAccentColor
++            self.tagsLabel.alpha = dimmed ? 0.55 : 1.0
++            let size = self.tagsLabel.sizeThatFits(CGSize(width: contentWidth, height: .greatestFiniteMagnitude))
++            self.tagsLabel.frame = CGRect(x: contentLeft, y: y + 1.0, width: contentWidth, height: ceil(size.height))
++            y += ceil(size.height) + 2.0
++        }
++
++        // Status chip
++        var status: (String, UIColor)?
++        if comment.status == .pending && !item.isPendingSection {
++            status = (ProfileCommentsStrings.awaiting, UIColor(rgb: 0xf08a24))
++        } else if comment.status == .hidden {
++            status = (ProfileCommentsStrings.hiddenLabel, theme.list.itemSecondaryTextColor)
++        } else if item.isOwnerView && !comment.reports.isEmpty {
++            status = (ProfileCommentsStrings.reports(comment.reports.count), theme.list.itemDestructiveColor)
++        }
++        self.statusLabel.isHidden = status == nil
++        if let status {
++            let (text, color) = status
++            self.statusLabel.text = text
++            self.statusLabel.textColor = color
++            self.statusLabel.backgroundColor = color.withAlphaComponent(0.12)
++            let size = self.statusLabel.sizeThatFits(CGSize(width: contentWidth, height: 20.0))
++            self.statusLabel.frame = CGRect(x: contentLeft, y: y + 5.0, width: size.width, height: size.height)
++            y += size.height + 5.0
++        }
++
++        // Text
++        self.textLabel.text = comment.text
++        self.textLabel.textColor = theme.list.itemPrimaryTextColor
++        self.textLabel.alpha = dimmed ? 0.55 : 1.0
++        let textSize = self.textLabel.sizeThatFits(CGSize(width: contentWidth, height: .greatestFiniteMagnitude))
++        self.textLabel.frame = CGRect(x: contentLeft, y: y + 4.0, width: contentWidth, height: ceil(textSize.height))
++        y += ceil(textSize.height) + 4.0
++
++        // Reactions
++        for button in self.reactionButtons {
++            button.removeFromSuperview()
++        }
++        self.reactionButtons.removeAll()
++        if comment.status == .approved {
++            let sorted = comment.sortedReactions
++            if !sorted.isEmpty {
++                var x = contentLeft
++                y += 8.0
++                for emoji in sorted {
++                    let mine = item.myReactions.contains(emoji)
++                    let button = UIButton(type: .custom)
++                    button.accessibilityIdentifier = emoji
++                    button.accessibilityLabel = "\(emoji) \(comment.reactionCount(emoji))"
++                    button.titleLabel?.font = Font.semibold(13.0)
++                    button.setTitle("\(emoji) \(comment.reactionCount(emoji))", for: .normal)
++                    button.setTitleColor(mine ? theme.list.itemCheckColors.foregroundColor : theme.list.itemAccentColor, for: .normal)
++                    button.backgroundColor = mine ? theme.list.itemAccentColor : theme.list.itemAccentColor.withAlphaComponent(0.1)
++                    button.layer.cornerRadius = 14.0
++                    button.addTarget(self, action: #selector(self.reactionPressed(_:)), for: .touchUpInside)
++                    let titleSize = ("\(emoji) \(comment.reactionCount(emoji))" as NSString).size(withAttributes: [.font: Font.semibold(13.0)])
++                    let size = CGSize(width: ceil(titleSize.width) + 19.0, height: 28.0)
++                    if x + size.width > width - rightInset && x > contentLeft {
++                        x = contentLeft
++                        y += 34.0
++                    }
++                    button.frame = CGRect(x: x, y: y, width: size.width, height: 28.0)
++                    self.addSubview(button)
++                    self.reactionButtons.append(button)
++                    x += size.width + 6.0
++                    if emoji == self.bumpEmoji {
++                        button.transform = CGAffineTransform(scaleX: 0.6, y: 0.6)
++                        UIView.animate(withDuration: 0.4, delay: 0.0, usingSpringWithDamping: 0.5, initialSpringVelocity: 0.0, options: [], animations: {
++                            button.transform = .identity
++                        })
++                    }
++                }
++                y += 28.0
++            }
++        }
++        self.bumpEmoji = nil
++
++        // Owner reply
++        self.replyView.isHidden = !comment.hasReply
++        if comment.hasReply {
++            y += 9.0
++            let innerWidth = contentWidth - 22.0
++            self.replyView.backgroundColor = theme.list.itemAccentColor.withAlphaComponent(0.08)
++            self.replyBar.backgroundColor = theme.list.itemAccentColor
++            self.replyAvatarNode.frame = CGRect(x: 12.0, y: 8.0, width: 18.0, height: 18.0)
++            if let owner = item.ownerPeer {
++                self.replyAvatarNode.setPeer(context: context, theme: theme, peer: owner, displayDimensions: CGSize(width: 18.0, height: 18.0))
++            }
++            self.replyTitleLabel.text = ProfileCommentsStrings.replyTitle(item.ownerName, ProfileCommentsStore.formatAgo(comment.replyDate ?? comment.date))
++            self.replyTitleLabel.textColor = theme.list.itemAccentColor
++            self.replyTitleLabel.frame = CGRect(x: 36.0, y: 8.0, width: innerWidth - 24.0, height: 18.0)
++            self.replyTextLabel.text = comment.replyText
++            self.replyTextLabel.textColor = theme.list.itemPrimaryTextColor
++            let replySize = self.replyTextLabel.sizeThatFits(CGSize(width: innerWidth, height: .greatestFiniteMagnitude))
++            self.replyTextLabel.frame = CGRect(x: 12.0, y: 29.0, width: innerWidth, height: ceil(replySize.height))
++            let replyHeight = 29.0 + ceil(replySize.height) + 8.0
++            self.replyView.frame = CGRect(x: contentLeft, y: y, width: contentWidth, height: replyHeight)
++            self.replyBar.frame = CGRect(x: 0.0, y: 0.0, width: 3.0, height: replyHeight)
++            y += replyHeight
++        }
++
++        // Moderation row (pending queue)
++        let showModeration = item.isPendingSection
++        self.approveButton.isHidden = !showModeration
++        self.dismissButton.isHidden = !showModeration
++        if showModeration {
++            y += 10.0
++            let buttonWidth = (contentWidth - 8.0) / 2.0
++            self.approveButton.backgroundColor = theme.list.itemAccentColor
++            self.approveButton.setTitleColor(theme.list.itemCheckColors.foregroundColor, for: .normal)
++            self.dismissButton.backgroundColor = theme.list.itemDestructiveColor.withAlphaComponent(0.1)
++            self.dismissButton.setTitleColor(theme.list.itemDestructiveColor, for: .normal)
++            self.approveButton.frame = CGRect(x: contentLeft, y: y, width: buttonWidth, height: 36.0)
++            self.dismissButton.frame = CGRect(x: contentLeft + buttonWidth + 8.0, y: y, width: buttonWidth, height: 36.0)
++            y += 36.0
++        }
++
++        y += 12.0
++        self.divider.isHidden = !item.showDivider
++        self.divider.backgroundColor = theme.list.itemBlocksSeparatorColor
++        self.divider.frame = CGRect(x: contentLeft, y: y - UIScreenPixel, width: width - contentLeft, height: UIScreenPixel)
++
++        self.accessibilityLabel = "\(item.authorName), \(ProfileCommentsStore.formatAgo(comment.date)): \(comment.text)"
++        return y
++    }
++}
++
++/// UILabel with internal padding, used for status chips.
++final class PaddedLabel: UILabel {
++    var insets = UIEdgeInsets(top: 2.0, left: 7.0, bottom: 2.0, right: 7.0)
++
++    override func drawText(in rect: CGRect) {
++        super.drawText(in: rect.inset(by: self.insets))
++    }
++
++    override func sizeThatFits(_ size: CGSize) -> CGSize {
++        let base = super.sizeThatFits(CGSize(width: size.width - self.insets.left - self.insets.right, height: size.height))
++        return CGSize(width: ceil(base.width) + self.insets.left + self.insets.right, height: ceil(base.height) + self.insets.top + self.insets.bottom)
++    }
++}
+diff --git a/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentsPaneNode.swift b/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentsPaneNode.swift
+new file mode 100644
+index 0000000..12c6b35
+--- /dev/null
++++ b/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentsPaneNode.swift
+@@ -0,0 +1,849 @@
++import Foundation
++import UIKit
++import AsyncDisplayKit
++import Display
++import SwiftSignalKit
++import TelegramCore
++import TelegramPresentationData
++import AccountContext
++import PeerInfoPaneNode
++import UndoUI
++
++/// The "Comments" tab on a user profile, next to Posts and Gifts.
++/// The owner and visitors get different layouts automatically.
++public final class ProfileCommentsPaneNode: ASDisplayNode, PeerInfoPaneNode, UIScrollViewDelegate {
++    private let context: AccountContext
++    private let ownerId: EnginePeer.Id
++    private let store: ProfileCommentsStore
++    private let openPeer: (EnginePeer) -> Void
++
++    public weak var parentController: ViewController?
++
++    private let scrollView = UIScrollView()
++    private let cardView = UIView()
++    private let filtersScrollView = UIScrollView()
++    private var filterButtons: [UIButton] = []
++    private let pendingTitleLabel = UILabel()
++    private let pendingHintLabel = UILabel()
++    private let gapView = UIView()
++    private let listTitleLabel = UILabel()
++    private let listModeButton = UIButton(type: .system)
++    private let emptyIcon = UIImageView()
++    private let emptyTitleLabel = UILabel()
++    private let emptyTextLabel = UILabel()
++    private let footerLabel = UILabel()
++    private var itemViews: [String: ProfileCommentItemView] = [:]
++
++    private let leaveButtonBackground = UIView()
++    private let leaveButton = UIButton(type: .system)
++
++    private var tagFilter: String?
++    private var peers: [EnginePeer.Id: EnginePeer] = [:]
++    private var subscribedPeerIds: Set<EnginePeer.Id> = Set()
++    private var peersDisposable: Disposable?
++    private var updatesDisposable: Disposable?
++    private var currentParams: (size: CGSize, topInset: CGFloat, sideInset: CGFloat, bottomInset: CGFloat, visibleHeight: CGFloat, isScrollingLockedAtTop: Bool, presentationData: PresentationData)?
++
++    private let ready = Promise<Bool>()
++    private var didSetReady = false
++    public var isReady: Signal<Bool, NoError> {
++        return self.ready.get()
++    }
++
++    private let statusPromise = Promise<PeerInfoStatusData?>(nil)
++    public var status: Signal<PeerInfoStatusData?, NoError> {
++        return self.statusPromise.get()
++    }
++
++    public var tabBarOffsetUpdated: ((ContainedViewLayoutTransition) -> Void)?
++    public var tabBarOffset: CGFloat {
++        return 0.0
++    }
++
++    public init(context: AccountContext, ownerId: EnginePeer.Id, openPeer: @escaping (EnginePeer) -> Void) {
++        self.context = context
++        self.ownerId = ownerId
++        self.store = ProfileCommentsStore.shared(accountPeerId: context.account.peerId)
++        self.openPeer = openPeer
++        super.init()
++    }
++
++    deinit {
++        self.peersDisposable?.dispose()
++        self.updatesDisposable?.dispose()
++    }
++
++    override public func didLoad() {
++        super.didLoad()
++
++        self.scrollView.delegate = self
++        self.scrollView.alwaysBounceVertical = true
++        self.scrollView.showsVerticalScrollIndicator = false
++        self.scrollView.contentInsetAdjustmentBehavior = .never
++        self.view.addSubview(self.scrollView)
++
++        self.cardView.layer.cornerRadius = 26.0
++        self.cardView.clipsToBounds = true
++        self.scrollView.addSubview(self.cardView)
++
++        self.filtersScrollView.showsHorizontalScrollIndicator = false
++        self.filtersScrollView.alwaysBounceHorizontal = true
++        self.cardView.addSubview(self.filtersScrollView)
++
++        self.pendingTitleLabel.font = Font.semibold(15.0)
++        self.pendingHintLabel.font = Font.regular(13.0)
++        self.cardView.addSubview(self.pendingTitleLabel)
++        self.cardView.addSubview(self.pendingHintLabel)
++        self.cardView.addSubview(self.gapView)
++
++        self.listTitleLabel.font = Font.semibold(15.0)
++        self.cardView.addSubview(self.listTitleLabel)
++        self.listModeButton.titleLabel?.font = Font.regular(13.0)
++        self.listModeButton.addTarget(self, action: #selector(self.modePressed), for: .touchUpInside)
++        self.cardView.addSubview(self.listModeButton)
++
++        self.emptyIcon.image = UIImage(systemName: "bubble.left.and.bubble.right", withConfiguration: UIImage.SymbolConfiguration(pointSize: 34.0, weight: .regular))
++        self.emptyIcon.contentMode = .center
++        self.cardView.addSubview(self.emptyIcon)
++        self.emptyTitleLabel.font = Font.semibold(16.0)
++        self.emptyTitleLabel.textAlignment = .center
++        self.emptyTitleLabel.text = ProfileCommentsStrings.emptyTitle
++        self.cardView.addSubview(self.emptyTitleLabel)
++        self.emptyTextLabel.font = Font.regular(14.0)
++        self.emptyTextLabel.textAlignment = .center
++        self.emptyTextLabel.numberOfLines = 0
++        self.cardView.addSubview(self.emptyTextLabel)
++
++        self.footerLabel.font = Font.regular(13.0)
++        self.footerLabel.textAlignment = .center
++        self.footerLabel.numberOfLines = 0
++        self.scrollView.addSubview(self.footerLabel)
++
++        self.view.addSubview(self.leaveButtonBackground)
++        self.leaveButton.titleLabel?.font = Font.semibold(17.0)
++        self.leaveButton.layer.cornerRadius = 25.0
++        self.leaveButton.clipsToBounds = true
++        self.leaveButton.addTarget(self, action: #selector(self.leavePressed), for: .touchUpInside)
++        self.view.addSubview(self.leaveButton)
++
++        self.updatesDisposable = (self.store.updates
++        |> filter { [weak self] id in
++            return id == self?.ownerId
++        }
++        |> deliverOnMainQueue).startStrict(next: { [weak self] _ in
++            self?.refresh(animated: true)
++        })
++        self.refresh(animated: false)
++    }
++
++    // MARK: - Data
++
++    private var ownerPeer: EnginePeer? {
++        return self.peers[self.ownerId]
++    }
++
++    private var ownerFirstName: String {
++        if case let .user(user) = self.ownerPeer {
++            return user.firstName ?? user.lastName ?? ""
++        }
++        return ""
++    }
++
++    private var ownerName: String {
++        if case let .user(user) = self.ownerPeer {
++            return [user.firstName, user.lastName].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
++        }
++        return ""
++    }
++
++    private var ownerIsMutualContact: Bool {
++        if case let .user(user) = self.ownerPeer {
++            return user.flags.contains(.mutualContact)
++        }
++        return false
++    }
++
++    private func authorName(_ comment: ProfileCommentsStore.Comment) -> String {
++        if case let .user(user) = self.peers[EnginePeer.Id(comment.authorId)] {
++            return [user.firstName, user.lastName].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
++        }
++        return comment.authorName ?? ""
++    }
++
++    private func authorFirstName(_ comment: ProfileCommentsStore.Comment) -> String {
++        let name = self.authorName(comment)
++        return name.split(separator: " ").first.map(String.init) ?? name
++    }
++
++    private func updatePeerSubscription() {
++        var ids = Set<EnginePeer.Id>([self.ownerId, self.context.account.peerId])
++        for comment in self.store.all(ownerId: self.ownerId) where comment.authorId > 0 {
++            ids.insert(EnginePeer.Id(comment.authorId))
++        }
++        if ids == self.subscribedPeerIds {
++            return
++        }
++        self.subscribedPeerIds = ids
++        self.peersDisposable?.dispose()
++        self.peersDisposable = (self.context.engine.data.subscribe(EngineDataMap(ids.map { TelegramEngine.EngineData.Item.Peer.Peer(id: $0) }))
++        |> deliverOnMainQueue).startStrict(next: { [weak self] result in
++            guard let self else {
++                return
++            }
++            var peers: [EnginePeer.Id: EnginePeer] = [:]
++            for (id, peer) in result {
++                if let peer {
++                    peers[id] = peer
++                }
++            }
++            self.peers = peers
++            self.refresh(animated: false)
++        })
++    }
++
++    private func refresh(animated: Bool) {
++        self.updatePeerSubscription()
++        self.statusPromise.set(.single(PeerInfoStatusData(text: ProfileCommentsStrings.count(self.store.approvedCount(ownerId: self.ownerId)), isActivity: false, key: .comments)))
++        if let params = self.currentParams {
++            self.layout(params: params, transition: animated ? .animated(duration: 0.35, curve: .spring) : .immediate)
++        }
++    }
++
++    // MARK: - PeerInfoPaneNode
++
++    public func update(size: CGSize, topInset: CGFloat, sideInset: CGFloat, bottomInset: CGFloat, deviceMetrics: DeviceMetrics, visibleHeight: CGFloat, isScrollingLockedAtTop: Bool, expandProgress: CGFloat, navigationHeight: CGFloat, presentationData: PresentationData, synchronous: Bool, transition: ContainedViewLayoutTransition) {
++        let params = (size: size, topInset: topInset, sideInset: sideInset, bottomInset: bottomInset, visibleHeight: visibleHeight, isScrollingLockedAtTop: isScrollingLockedAtTop, presentationData: presentationData)
++        self.currentParams = params
++        self.layout(params: params, transition: transition)
++        if !self.didSetReady {
++            self.didSetReady = true
++            self.ready.set(.single(true))
++        }
++    }
++
++    public func scrollToTop() -> Bool {
++        if self.scrollView.contentOffset.y > 0.0 {
++            self.scrollView.setContentOffset(CGPoint(), animated: true)
++            return true
++        }
++        return false
++    }
++
++    public func transferVelocity(_ velocity: CGFloat) {
++        guard velocity > 0.0 else {
++            return
++        }
++        let maxOffset = max(0.0, self.scrollView.contentSize.height - self.scrollView.bounds.height)
++        let target = min(maxOffset, self.scrollView.contentOffset.y + velocity * 0.25)
++        self.scrollView.setContentOffset(CGPoint(x: 0.0, y: target), animated: true)
++    }
++
++    public func cancelPreviewGestures() {
++    }
++
++    public func findLoadedMessage(id: EngineMessage.Id) -> EngineMessage? {
++        return nil
++    }
++
++    public func transitionNodeForGallery(messageId: EngineMessage.Id, media: EngineMedia) -> (ASDisplayNode, CGRect, () -> (UIView?, UIView?))? {
++        return nil
++    }
++
++    public func addToTransitionSurface(view: UIView) {
++    }
++
++    public func updateHiddenMedia() {
++    }
++
++    public func updateSelectedMessages(animated: Bool) {
++    }
++
++    public func ensureMessageIsVisible(id: EngineMessage.Id) {
++    }
++
++    // MARK: - Layout
++
++    private func layout(params: (size: CGSize, topInset: CGFloat, sideInset: CGFloat, bottomInset: CGFloat, visibleHeight: CGFloat, isScrollingLockedAtTop: Bool, presentationData: PresentationData), transition: ContainedViewLayoutTransition) {
++        guard self.isNodeLoaded else {
++            return
++        }
++        let theme = params.presentationData.theme
++        let size = params.size
++        let isOwner = self.store.isOwner(self.ownerId)
++        let settings = self.store.settings(ownerId: self.ownerId)
++        let approvedCount = self.store.approvedCount(ownerId: self.ownerId)
++        let tagCounts = self.store.tagCounts(ownerId: self.ownerId)
++        if let tagFilter = self.tagFilter, !tagCounts.contains(where: { $0.0 == tagFilter }) {
++            self.tagFilter = nil
++        }
++
++        self.backgroundColor = theme.list.blocksBackgroundColor
++        self.scrollView.frame = CGRect(origin: CGPoint(), size: size)
++        self.scrollView.isScrollEnabled = !params.isScrollingLockedAtTop
++        if params.isScrollingLockedAtTop && self.scrollView.contentOffset.y > 0.0 {
++            self.scrollView.setContentOffset(CGPoint(), animated: false)
++        }
++        self.cardView.backgroundColor = theme.list.itemBlocksBackgroundColor
++
++        let cardInset: CGFloat = 16.0 + params.sideInset
++        let cardWidth = size.width - cardInset * 2.0
++        var y: CGFloat = 0.0
++
++        // Filters
++        for button in self.filterButtons {
++            button.removeFromSuperview()
++        }
++        self.filterButtons.removeAll()
++        self.filtersScrollView.isHidden = approvedCount == 0
++        if approvedCount > 0 {
++            var chips: [(String?, String, Int)] = [(nil, ProfileCommentsStrings.filterAll, approvedCount)]
++            for (id, count) in tagCounts {
++                if let tag = ProfileCommentsStore.tag(id: id) {
++                    chips.append((id, "\(tag.emoji) \(tag.title)", count))
++                }
++            }
++            var x: CGFloat = 12.0
++            for (id, title, count) in chips {
++                let on = id == self.tagFilter
++                let button = UIButton(type: .custom)
++                button.accessibilityIdentifier = id ?? ""
++                let attributed = NSMutableAttributedString(string: title + "  ", attributes: [.font: on ? Font.semibold(14.0) : Font.regular(14.0), .foregroundColor: on ? theme.list.itemAccentColor : theme.list.itemPrimaryTextColor])
++                attributed.append(NSAttributedString(string: "\(count)", attributes: [.font: Font.semibold(14.0), .foregroundColor: on ? theme.list.itemAccentColor : theme.list.itemSecondaryTextColor]))
++                button.setAttributedTitle(attributed, for: .normal)
++                button.backgroundColor = on ? theme.list.itemAccentColor.withAlphaComponent(0.14) : theme.list.itemSecondaryTextColor.withAlphaComponent(0.1)
++                button.layer.cornerRadius = 16.0
++                button.addTarget(self, action: #selector(self.filterPressed(_:)), for: .touchUpInside)
++                let width = ceil(attributed.size().width) + 24.0
++                button.frame = CGRect(x: x, y: 0.0, width: width, height: 32.0)
++                x += width + 8.0
++                self.filtersScrollView.addSubview(button)
++                self.filterButtons.append(button)
++            }
++            self.filtersScrollView.frame = CGRect(x: 0.0, y: 12.0, width: cardWidth, height: 32.0)
++            self.filtersScrollView.contentSize = CGSize(width: x + 4.0, height: 32.0)
++            y = 12.0 + 32.0 + 4.0
++        }
++
++        var usedKeys = Set<String>()
++        func layoutItem(_ comment: ProfileCommentsStore.Comment, pending: Bool, divider: Bool) {
++            let key = "\(pending ? "p" : "c")\(comment.id)"
++            usedKeys.insert(key)
++            let itemView: ProfileCommentItemView
++            var isNew = false
++            if let current = self.itemViews[key] {
++                itemView = current
++            } else {
++                itemView = ProfileCommentItemView()
++                isNew = true
++                self.itemViews[key] = itemView
++                self.cardView.addSubview(itemView)
++            }
++            let commentId = comment.id
++            itemView.onTap = { [weak self] view in
++                self?.openMenu(commentId: commentId, sourceView: view)
++            }
++            itemView.onDoubleTap = { [weak self] view in
++                self?.react(commentId: commentId, emoji: ProfileCommentsStore.reactions[0], view: view)
++            }
++            itemView.onReaction = { [weak self, weak itemView] emoji in
++                self?.react(commentId: commentId, emoji: emoji, view: itemView)
++            }
++            itemView.onApprove = { [weak self] in
++                self?.approve(commentId: commentId)
++            }
++            itemView.onDismiss = { [weak self] in
++                self?.dismiss(commentId: commentId)
++            }
++            let myReactions = Set(ProfileCommentsStore.reactions.filter { self.store.hasMyReaction(comment, emoji: $0) })
++            let item = ProfileCommentItemView.Item(
++                comment: comment,
++                authorPeer: comment.authorId > 0 ? self.peers[EnginePeer.Id(comment.authorId)] : nil,
++                authorName: self.authorName(comment),
++                ownerPeer: self.ownerPeer,
++                ownerName: self.ownerName,
++                isOwnerView: isOwner,
++                isMine: self.store.isMine(comment),
++                isPendingSection: pending,
++                myReactions: myReactions,
++                showDivider: divider
++            )
++            let height = itemView.update(item: item, context: self.context, theme: theme, width: cardWidth)
++            let frame = CGRect(x: 0.0, y: y, width: cardWidth, height: height)
++            if isNew {
++                itemView.frame = frame
++                if case .animated = transition {
++                    itemView.alpha = 0.0
++                    transition.updateAlpha(layer: itemView.layer, alpha: 1.0)
++                }
++            } else {
++                transition.updateFrame(view: itemView, frame: frame)
++            }
++            y += height
++        }
++
++        // Pending queue (owner)
++        let pending = self.store.pending(ownerId: self.ownerId)
++        self.pendingTitleLabel.isHidden = pending.isEmpty
++        self.pendingHintLabel.isHidden = pending.isEmpty
++        self.gapView.isHidden = pending.isEmpty
++        if !pending.isEmpty {
++            self.pendingTitleLabel.text = ProfileCommentsStrings.pendingHeader(pending.count)
++            self.pendingTitleLabel.textColor = UIColor(rgb: 0xf08a24)
++            self.pendingHintLabel.text = ProfileCommentsStrings.pendingHint
++            self.pendingHintLabel.textColor = theme.list.itemSecondaryTextColor
++            let hintSize = self.pendingHintLabel.sizeThatFits(CGSize(width: cardWidth, height: 20.0))
++            transition.updateFrame(view: self.pendingHintLabel, frame: CGRect(x: cardWidth - 16.0 - hintSize.width, y: y + 14.0, width: hintSize.width, height: 20.0))
++            transition.updateFrame(view: self.pendingTitleLabel, frame: CGRect(x: 16.0, y: y + 14.0, width: cardWidth - 32.0 - hintSize.width, height: 20.0))
++            y += 40.0
++            for (index, comment) in pending.enumerated() {
++                layoutItem(comment, pending: true, divider: index != pending.count - 1)
++            }
++            self.gapView.backgroundColor = theme.list.blocksBackgroundColor
++            transition.updateFrame(view: self.gapView, frame: CGRect(x: 0.0, y: y, width: cardWidth, height: 10.0))
++            y += 10.0
++        }
++
++        // List header
++        let mode: String
++        switch settings.who {
++        case .nobody:
++            mode = ProfileCommentsStrings.modeOff
++        case .contacts:
++            mode = ProfileCommentsStrings.modeContacts
++        case .everybody:
++            mode = settings.approve ? ProfileCommentsStrings.modeApproval : ProfileCommentsStrings.modePublic
++        }
++        self.listTitleLabel.text = ProfileCommentsStrings.count(approvedCount)
++        self.listTitleLabel.textColor = theme.list.itemPrimaryTextColor
++        self.listModeButton.setTitle(isOwner ? "\(mode)  ·  \(ProfileCommentsStrings.settingsShort)" : mode, for: .normal)
++        self.listModeButton.setTitleColor(isOwner ? theme.list.itemAccentColor : theme.list.itemSecondaryTextColor, for: .normal)
++        self.listModeButton.isUserInteractionEnabled = isOwner
++        let modeWidth = ceil((self.listModeButton.title(for: .normal)! as NSString).size(withAttributes: [.font: Font.regular(13.0)]).width) + 8.0
++        transition.updateFrame(view: self.listModeButton, frame: CGRect(x: cardWidth - 12.0 - modeWidth, y: y + 10.0, width: modeWidth, height: 28.0))
++        transition.updateFrame(view: self.listTitleLabel, frame: CGRect(x: 16.0, y: y + 14.0, width: cardWidth - 40.0 - modeWidth, height: 20.0))
++        y += 40.0
++
++        // Comments or empty state
++        let visible = self.store.visible(ownerId: self.ownerId, tagFilter: self.tagFilter)
++        let isEmpty = visible.isEmpty
++        self.emptyIcon.isHidden = !isEmpty
++        self.emptyTitleLabel.isHidden = !isEmpty
++        self.emptyTextLabel.isHidden = !isEmpty
++        if isEmpty {
++            self.emptyIcon.tintColor = theme.list.itemSecondaryTextColor
++            self.emptyTitleLabel.textColor = theme.list.itemPrimaryTextColor
++            self.emptyTextLabel.textColor = theme.list.itemSecondaryTextColor
++            if isOwner {
++                self.emptyTextLabel.text = ProfileCommentsStrings.emptyOwner
++            } else if settings.who == .nobody {
++                self.emptyTextLabel.text = ProfileCommentsStrings.emptyOff(self.ownerFirstName)
++            } else {
++                self.emptyTextLabel.text = ProfileCommentsStrings.emptyVisitor(self.ownerFirstName)
++            }
++            self.emptyIcon.frame = CGRect(x: 0.0, y: y + 12.0, width: cardWidth, height: 44.0)
++            self.emptyTitleLabel.frame = CGRect(x: 24.0, y: y + 62.0, width: cardWidth - 48.0, height: 22.0)
++            let textSize = self.emptyTextLabel.sizeThatFits(CGSize(width: cardWidth - 48.0, height: .greatestFiniteMagnitude))
++            self.emptyTextLabel.frame = CGRect(x: 24.0, y: y + 88.0, width: cardWidth - 48.0, height: ceil(textSize.height))
++            y += 88.0 + ceil(textSize.height) + 20.0
++        } else {
++            for (index, comment) in visible.enumerated() {
++                layoutItem(comment, pending: false, divider: index != visible.count - 1)
++            }
++        }
++
++        for (key, view) in self.itemViews where !usedKeys.contains(key) {
++            self.itemViews.removeValue(forKey: key)
++            if case .animated = transition {
++                transition.updateAlpha(layer: view.layer, alpha: 0.0, completion: { _ in
++                    view.removeFromSuperview()
++                })
++            } else {
++                view.removeFromSuperview()
++            }
++        }
++
++        transition.updateFrame(view: self.cardView, frame: CGRect(x: cardInset, y: params.topInset, width: cardWidth, height: y))
++        var contentHeight = params.topInset + y
++
++        // Rules footer
++        var prefix = ""
++        if settings.who == .nobody {
++            prefix = ProfileCommentsStrings.rulesOff(self.ownerFirstName)
++        } else if settings.who == .contacts {
++            prefix = ProfileCommentsStrings.rulesContacts(self.ownerFirstName)
++        }
++        self.footerLabel.text = prefix + ProfileCommentsStrings.rules(isOwner ? ProfileCommentsStrings.you.lowercased() : self.ownerFirstName)
++        self.footerLabel.textColor = theme.list.freeTextColor
++        let footerSize = self.footerLabel.sizeThatFits(CGSize(width: cardWidth - 16.0, height: .greatestFiniteMagnitude))
++        transition.updateFrame(view: self.footerLabel, frame: CGRect(x: cardInset + 8.0, y: contentHeight + 12.0, width: cardWidth - 16.0, height: ceil(footerSize.height)))
++        contentHeight += 12.0 + ceil(footerSize.height) + 16.0
++
++        // Leave button (visitors only), pinned to the bottom of the visible part of the profile
++        let leaveState = self.store.leaveState(ownerId: self.ownerId, ownerFirstName: self.ownerFirstName, ownerIsMutualContact: self.ownerIsMutualContact)
++        let showLeave: Bool
++        switch leaveState {
++        case .owner:
++            showLeave = false
++        case .allowed:
++            showLeave = true
++            self.leaveButton.setTitle("✎  " + ProfileCommentsStrings.leave, for: .normal)
++            self.leaveButton.alpha = 1.0
++        case let .disabled(text):
++            showLeave = true
++            self.leaveButton.setTitle(text, for: .normal)
++            self.leaveButton.alpha = 0.6
++        }
++        self.leaveButton.isHidden = !showLeave
++        self.leaveButtonBackground.isHidden = !showLeave
++        if showLeave {
++            self.leaveButton.backgroundColor = theme.list.itemCheckColors.fillColor
++            self.leaveButton.setTitleColor(theme.list.itemCheckColors.foregroundColor, for: .normal)
++            let visibleBottom = min(size.height, params.visibleHeight)
++            let buttonFrame = CGRect(x: cardInset, y: visibleBottom - params.bottomInset - 12.0 - 50.0, width: cardWidth, height: 50.0)
++            transition.updateFrame(view: self.leaveButton, frame: buttonFrame)
++            self.leaveButtonBackground.backgroundColor = theme.list.blocksBackgroundColor.withAlphaComponent(0.92)
++            transition.updateFrame(view: self.leaveButtonBackground, frame: CGRect(x: 0.0, y: buttonFrame.minY - 12.0, width: size.width, height: size.height - buttonFrame.minY + 12.0))
++            contentHeight += 50.0 + 24.0
++        }
++
++        self.scrollView.contentSize = CGSize(width: size.width, height: max(contentHeight + params.bottomInset, size.height))
++    }
++
++    // MARK: - Actions
++
++    @objc private func filterPressed(_ sender: UIButton) {
++        let id = sender.accessibilityIdentifier ?? ""
++        let filter: String? = id.isEmpty ? nil : id
++        if filter == self.tagFilter {
++            return
++        }
++        self.tagFilter = filter
++        UISelectionFeedbackGenerator().selectionChanged()
++        self.refresh(animated: true)
++    }
++
++    @objc private func modePressed() {
++        guard self.store.isOwner(self.ownerId) else {
++            return
++        }
++        let controller = profileCommentsSettingsController(context: self.context)
++        (self.parentController?.navigationController as? NavigationController)?.pushViewController(controller)
++    }
++
++    @objc private func leavePressed() {
++        let state = self.store.leaveState(ownerId: self.ownerId, ownerFirstName: self.ownerFirstName, ownerIsMutualContact: self.ownerIsMutualContact)
++        switch state {
++        case .owner:
++            return
++        case let .disabled(text):
++            UINotificationFeedbackGenerator().notificationOccurred(.warning)
++            self.toast(text)
++        case .allowed:
++            let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
++            let ownerFirstName = self.ownerFirstName
++            let controller = ProfileCommentComposeController(
++                mode: .comment(ownerFirstName: ownerFirstName, approval: self.store.settings(ownerId: self.ownerId).approve),
++                context: self.context,
++                theme: presentationData.theme,
++                selfPeer: self.peers[self.context.account.peerId],
++                onMessage: { [weak self] in
++                    guard let self, let owner = self.ownerPeer else {
++                        return
++                    }
++                    self.openPeer(owner)
++                },
++                completion: { [weak self] text, tags in
++                    guard let self else {
++                        return nil
++                    }
++                    guard let comment = self.store.post(ownerId: self.ownerId, text: text, tags: tags, ownerFirstName: ownerFirstName, ownerIsMutualContact: self.ownerIsMutualContact) else {
++                        if case let .disabled(reason) = self.store.leaveState(ownerId: self.ownerId, ownerFirstName: ownerFirstName, ownerIsMutualContact: self.ownerIsMutualContact) {
++                            return reason
++                        }
++                        return nil
++                    }
++                    self.tagFilter = nil
++                    let _ = self.scrollToTop()
++                    self.toast(comment.status == .pending ? ProfileCommentsStrings.toastPending(ownerFirstName) : ProfileCommentsStrings.toastPosted)
++                    return nil
++                }
++            )
++            ProfileCommentComposeController.present(controller, from: self.view)
++        }
++    }
++
++    private func comment(_ id: Int64) -> ProfileCommentsStore.Comment? {
++        return self.store.all(ownerId: self.ownerId).first(where: { $0.id == id })
++    }
++
++    private func react(commentId: Int64, emoji: String, view: ProfileCommentItemView?) {
++        guard let comment = self.comment(commentId), comment.status == .approved else {
++            return
++        }
++        view?.bumpReaction(emoji)
++        UIImpactFeedbackGenerator(style: .light).impactOccurred()
++        self.store.toggleReaction(ownerId: self.ownerId, commentId: commentId, emoji: emoji)
++    }
++
++    private func approve(commentId: Int64) {
++        self.store.setStatus(ownerId: self.ownerId, commentId: commentId, status: .approved)
++        self.toast(ProfileCommentsStrings.toastApproved)
++    }
++
++    private func dismiss(commentId: Int64) {
++        self.store.delete(ownerId: self.ownerId, commentId: commentId)
++        self.toast(ProfileCommentsStrings.toastDismissed)
++    }
++
++    private func openMenu(commentId: Int64, sourceView: ProfileCommentItemView) {
++        guard let comment = self.comment(commentId) else {
++            return
++        }
++        let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
++        let isOwner = self.store.isOwner(self.ownerId)
++        let isMine = self.store.isMine(comment)
++        let authorFirst = self.authorFirstName(comment)
++        let actionSheet = ActionSheetController(presentationData: presentationData)
++        let dismissAction: () -> Void = { [weak actionSheet] in
++            actionSheet?.dismissAnimated()
++        }
++        var items: [ActionSheetItem] = []
++
++        if comment.status == .approved {
++            items.append(ActionSheetButtonItem(title: ProfileCommentsStrings.react, color: .accent, action: { [weak self, weak sourceView] in
++                dismissAction()
++                guard let self, let sourceView else {
++                    return
++                }
++                self.showReactionPicker(commentId: commentId, sourceView: sourceView)
++            }))
++        }
++        if isOwner {
++            if comment.status == .pending {
++                items.append(ActionSheetButtonItem(title: ProfileCommentsStrings.approve, color: .accent, action: { [weak self] in
++                    dismissAction()
++                    self?.approve(commentId: commentId)
++                }))
++            } else {
++                items.append(ActionSheetButtonItem(title: comment.hasReply ? ProfileCommentsStrings.editReply : ProfileCommentsStrings.reply, color: .accent, action: { [weak self] in
++                    dismissAction()
++                    self?.openReply(commentId: commentId)
++                }))
++                if comment.hasReply {
++                    items.append(ActionSheetButtonItem(title: ProfileCommentsStrings.deleteReply, color: .accent, action: { [weak self] in
++                        dismissAction()
++                        guard let self else {
++                            return
++                        }
++                        self.store.setReply(ownerId: self.ownerId, commentId: commentId, text: nil)
++                        self.toast(ProfileCommentsStrings.toastReplyDeleted)
++                    }))
++                }
++                if comment.status == .approved {
++                    items.append(ActionSheetButtonItem(title: comment.pinned ? ProfileCommentsStrings.unpin : ProfileCommentsStrings.pin, color: .accent, action: { [weak self] in
++                        dismissAction()
++                        guard let self else {
++                            return
++                        }
++                        let pinned = self.store.togglePin(ownerId: self.ownerId, commentId: commentId)
++                        self.toast(pinned ? ProfileCommentsStrings.toastPinned : ProfileCommentsStrings.toastUnpinned)
++                    }))
++                }
++                let hidden = comment.status == .hidden
++                items.append(ActionSheetButtonItem(title: hidden ? ProfileCommentsStrings.show : ProfileCommentsStrings.hide, color: .accent, action: { [weak self] in
++                    dismissAction()
++                    guard let self else {
++                        return
++                    }
++                    self.store.setStatus(ownerId: self.ownerId, commentId: commentId, status: hidden ? .approved : .hidden)
++                    self.toast(hidden ? ProfileCommentsStrings.toastShown : ProfileCommentsStrings.toastHidden)
++                }))
++            }
++        }
++        if !isMine {
++            items.append(ActionSheetButtonItem(title: ProfileCommentsStrings.message(authorFirst), color: .accent, action: { [weak self] in
++                dismissAction()
++                guard let self else {
++                    return
++                }
++                if comment.authorId > 0, let peer = self.peers[EnginePeer.Id(comment.authorId)] {
++                    self.openPeer(peer)
++                } else {
++                    self.toast(ProfileCommentsStrings.sampleUser)
++                }
++            }))
++        }
++        items.append(ActionSheetButtonItem(title: ProfileCommentsStrings.copy, color: .accent, action: { [weak self] in
++            dismissAction()
++            UIPasteboard.general.string = comment.text
++            self?.toast(ProfileCommentsStrings.toastCopied)
++        }))
++        if !isOwner && !isMine {
++            let reported = self.store.isReportedByMe(comment)
++            items.append(ActionSheetButtonItem(title: reported ? ProfileCommentsStrings.reported : ProfileCommentsStrings.report, color: reported ? .disabled : .destructive, enabled: !reported, action: { [weak self] in
++                dismissAction()
++                guard let self else {
++                    return
++                }
++                self.store.report(ownerId: self.ownerId, commentId: commentId)
++                self.toast(ProfileCommentsStrings.toastReported(self.ownerFirstName))
++            }))
++        }
++        if isOwner || isMine {
++            let title: String
++            if isOwner && !isMine {
++                title = comment.status == .pending ? ProfileCommentsStrings.decline : ProfileCommentsStrings.delete
++            } else {
++                title = ProfileCommentsStrings.deleteMine
++            }
++            items.append(ActionSheetButtonItem(title: title, color: .destructive, action: { [weak self] in
++                dismissAction()
++                guard let self else {
++                    return
++                }
++                self.store.delete(ownerId: self.ownerId, commentId: commentId)
++                self.toast(ProfileCommentsStrings.toastDeleted)
++            }))
++        }
++
++        actionSheet.setItemGroups([
++            ActionSheetItemGroup(items: items),
++            ActionSheetItemGroup(items: [ActionSheetButtonItem(title: ProfileCommentsStrings.cancel, color: .accent, font: .bold, action: dismissAction)])
++        ])
++        self.parentController?.present(actionSheet, in: .window(.root))
++    }
++
++    private func showReactionPicker(commentId: Int64, sourceView: ProfileCommentItemView) {
++        guard let theme = self.currentParams?.presentationData.theme else {
++            return
++        }
++        let overlay = ReactionStripOverlay(theme: theme, selected: Set(ProfileCommentsStore.reactions.filter { emoji in
++            guard let comment = self.comment(commentId) else {
++                return false
++            }
++            return self.store.hasMyReaction(comment, emoji: emoji)
++        }), onSelect: { [weak self, weak sourceView] emoji in
++            self?.react(commentId: commentId, emoji: emoji, view: sourceView)
++        })
++        overlay.frame = self.view.bounds
++        self.view.addSubview(overlay)
++        let anchor = sourceView.convert(sourceView.bounds, to: self.view)
++        overlay.show(above: anchor)
++    }
++
++    private func openReply(commentId: Int64) {
++        guard let comment = self.comment(commentId) else {
++            return
++        }
++        let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
++        let controller = ProfileCommentComposeController(
++            mode: .reply(authorFirstName: self.authorFirstName(comment), quote: comment.text, existing: comment.replyText),
++            context: self.context,
++            theme: presentationData.theme,
++            selfPeer: self.peers[self.context.account.peerId],
++            onMessage: nil,
++            completion: { [weak self] text, _ in
++                guard let self else {
++                    return nil
++                }
++                self.store.setReply(ownerId: self.ownerId, commentId: commentId, text: text)
++                self.toast(text.isEmpty ? ProfileCommentsStrings.toastReplyDeleted : ProfileCommentsStrings.toastReply)
++                return nil
++            }
++        )
++        ProfileCommentComposeController.present(controller, from: self.view)
++    }
++
++    private func toast(_ text: String) {
++        let presentationData = self.context.sharedContext.currentPresentationData.with { $0 }
++        let controller = UndoOverlayController(presentationData: presentationData, content: .info(title: nil, text: text, timeout: nil, customUndoText: nil), elevatedLayout: false, action: { _ in
++            return false
++        })
++        self.parentController?.present(controller, in: .current)
++    }
++}
++
++/// Floating row of quick reactions shown above a comment.
++private final class ReactionStripOverlay: UIView {
++    private let container = UIView()
++    private let scrollView = UIScrollView()
++    private let onSelect: (String) -> Void
++
++    init(theme: PresentationTheme, selected: Set<String>, onSelect: @escaping (String) -> Void) {
++        self.onSelect = onSelect
++        super.init(frame: CGRect())
++        self.backgroundColor = UIColor(white: 0.0, alpha: 0.12)
++
++        self.container.backgroundColor = theme.list.itemBlocksBackgroundColor
++        self.container.layer.cornerRadius = 26.0
++        self.container.layer.shadowColor = UIColor.black.cgColor
++        self.container.layer.shadowOpacity = 0.18
++        self.container.layer.shadowRadius = 16.0
++        self.container.layer.shadowOffset = CGSize(width: 0.0, height: 4.0)
++        self.addSubview(self.container)
++
++        self.scrollView.showsHorizontalScrollIndicator = false
++        self.scrollView.layer.cornerRadius = 26.0
++        self.scrollView.clipsToBounds = true
++        self.container.addSubview(self.scrollView)
++
++        var x: CGFloat = 6.0
++        for emoji in ProfileCommentsStore.reactions {
++            let button = UIButton(type: .custom)
++            button.setTitle(emoji, for: .normal)
++            button.titleLabel?.font = UIFont.systemFont(ofSize: 26.0)
++            button.accessibilityLabel = emoji
++            if selected.contains(emoji) {
++                button.backgroundColor = theme.list.itemAccentColor.withAlphaComponent(0.15)
++                button.layer.cornerRadius = 20.0
++            }
++            button.frame = CGRect(x: x, y: 6.0, width: 40.0, height: 40.0)
++            button.addTarget(self, action: #selector(self.pressed(_:)), for: .touchUpInside)
++            self.scrollView.addSubview(button)
++            x += 42.0
++        }
++        self.scrollView.contentSize = CGSize(width: x + 4.0, height: 52.0)
++
++        let tap = UITapGestureRecognizer(target: self, action: #selector(self.backgroundTapped))
++        tap.cancelsTouchesInView = false
++        self.addGestureRecognizer(tap)
++    }
++
++    required init?(coder: NSCoder) {
++        fatalError("init(coder:) has not been implemented")
++    }
++
++    func show(above anchor: CGRect) {
++        let width = min(self.bounds.width - 32.0, self.scrollView.contentSize.width)
++        let y = max(12.0, anchor.minY - 52.0 - 8.0)
++        self.container.frame = CGRect(x: (self.bounds.width - width) / 2.0, y: y, width: width, height: 52.0)
++        self.scrollView.frame = self.container.bounds
++        self.alpha = 0.0
++        self.container.transform = CGAffineTransform(scaleX: 0.8, y: 0.8)
++        UIView.animate(withDuration: 0.3, delay: 0.0, usingSpringWithDamping: 0.7, initialSpringVelocity: 0.0, options: [], animations: {
++            self.alpha = 1.0
++            self.container.transform = .identity
++        })
++    }
++
++    private func close() {
++        UIView.animate(withDuration: 0.18, animations: {
++            self.alpha = 0.0
++        }, completion: { _ in
++            self.removeFromSuperview()
++        })
++    }
++
++    @objc private func pressed(_ sender: UIButton) {
++        if let emoji = sender.title(for: .normal) {
++            self.onSelect(emoji)
++        }
++        self.close()
++    }
++
++    @objc private func backgroundTapped(_ recognizer: UITapGestureRecognizer) {
++        if !self.container.frame.contains(recognizer.location(in: self)) {
++            self.close()
++        }
++    }
++}
+diff --git a/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentsSettingsController.swift b/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentsSettingsController.swift
+new file mode 100644
+index 0000000..bb5e829
+--- /dev/null
++++ b/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentsSettingsController.swift
+@@ -0,0 +1,184 @@
++import Foundation
++import UIKit
++import Display
++import SwiftSignalKit
++import TelegramCore
++import TelegramPresentationData
++import ItemListUI
++import TextFormat
++import PresentationDataUtils
++import AccountContext
++
++/// Settings → Privacy and Security → Profile Comments.
++
++private final class ProfileCommentsSettingsArguments {
++    let setWho: (ProfileCommentsStore.Who) -> Void
++    let setApprove: (Bool) -> Void
++
++    init(setWho: @escaping (ProfileCommentsStore.Who) -> Void, setApprove: @escaping (Bool) -> Void) {
++        self.setWho = setWho
++        self.setApprove = setApprove
++    }
++}
++
++private enum ProfileCommentsSettingsSection: Int32 {
++    case who
++    case moderation
++    case how
++}
++
++private enum ProfileCommentsSettingsEntry: ItemListNodeEntry {
++    case whoHeader(String)
++    case who(Int32, ProfileCommentsStore.Who, String, Bool)
++    case whoInfo(String)
++    case moderationHeader(String)
++    case approve(String, Bool)
++    case approveInfo(String)
++    case howHeader(String)
++    case how(Int32, String, String)
++
++    var section: ItemListSectionId {
++        switch self {
++        case .whoHeader, .who, .whoInfo:
++            return ProfileCommentsSettingsSection.who.rawValue
++        case .moderationHeader, .approve, .approveInfo:
++            return ProfileCommentsSettingsSection.moderation.rawValue
++        case .howHeader, .how:
++            return ProfileCommentsSettingsSection.how.rawValue
++        }
++    }
++
++    var stableId: Int32 {
++        switch self {
++        case .whoHeader:
++            return 0
++        case let .who(index, _, _, _):
++            return 1 + index
++        case .whoInfo:
++            return 10
++        case .moderationHeader:
++            return 11
++        case .approve:
++            return 12
++        case .approveInfo:
++            return 13
++        case .howHeader:
++            return 14
++        case let .how(index, _, _):
++            return 15 + index
++        }
++    }
++
++    static func <(lhs: ProfileCommentsSettingsEntry, rhs: ProfileCommentsSettingsEntry) -> Bool {
++        return lhs.stableId < rhs.stableId
++    }
++
++    static func ==(lhs: ProfileCommentsSettingsEntry, rhs: ProfileCommentsSettingsEntry) -> Bool {
++        switch lhs {
++        case let .whoHeader(text):
++            if case .whoHeader(text) = rhs { return true } else { return false }
++        case let .who(index, value, text, checked):
++            if case .who(index, value, text, checked) = rhs { return true } else { return false }
++        case let .whoInfo(text):
++            if case .whoInfo(text) = rhs { return true } else { return false }
++        case let .moderationHeader(text):
++            if case .moderationHeader(text) = rhs { return true } else { return false }
++        case let .approve(text, value):
++            if case .approve(text, value) = rhs { return true } else { return false }
++        case let .approveInfo(text):
++            if case .approveInfo(text) = rhs { return true } else { return false }
++        case let .howHeader(text):
++            if case .howHeader(text) = rhs { return true } else { return false }
++        case let .how(index, title, subtitle):
++            if case .how(index, title, subtitle) = rhs { return true } else { return false }
++        }
++    }
++
++    func item(presentationData: ItemListPresentationData, arguments: Any) -> ListViewItem {
++        let arguments = arguments as! ProfileCommentsSettingsArguments
++        switch self {
++        case let .whoHeader(text), let .moderationHeader(text), let .howHeader(text):
++            return ItemListSectionHeaderItem(presentationData: presentationData, text: text, sectionId: self.section)
++        case let .who(_, value, text, checked):
++            return ItemListCheckboxItem(presentationData: presentationData, systemStyle: .glass, title: text, style: .left, checked: checked, zeroSeparatorInsets: false, sectionId: self.section, action: {
++                arguments.setWho(value)
++            })
++        case let .whoInfo(text), let .approveInfo(text):
++            return ItemListTextItem(presentationData: presentationData, text: .plain(text), sectionId: self.section)
++        case let .approve(text, value):
++            return ItemListSwitchItem(presentationData: presentationData, systemStyle: .glass, title: text, value: value, sectionId: self.section, style: .blocks, updated: { value in
++                arguments.setApprove(value)
++            })
++        case let .how(_, title, subtitle):
++            return ItemListTextWithLabelItem(presentationData: presentationData, label: title, text: subtitle, style: .blocks, enabledEntityTypes: [], multiline: true, sectionId: self.section, action: nil)
++        }
++    }
++}
++
++private func profileCommentsSettingsEntries(settings: ProfileCommentsStore.Settings) -> [ProfileCommentsSettingsEntry] {
++    var entries: [ProfileCommentsSettingsEntry] = []
++    entries.append(.whoHeader(ProfileCommentsStrings.whoHeader))
++    entries.append(.who(0, .everybody, ProfileCommentsStrings.whoEverybody, settings.who == .everybody))
++    entries.append(.who(1, .contacts, ProfileCommentsStrings.whoContacts, settings.who == .contacts))
++    entries.append(.who(2, .nobody, ProfileCommentsStrings.whoNobody, settings.who == .nobody))
++    switch settings.who {
++    case .everybody:
++        entries.append(.whoInfo(ProfileCommentsStrings.whoInfoEverybody))
++    case .contacts:
++        entries.append(.whoInfo(ProfileCommentsStrings.whoInfoContacts))
++    case .nobody:
++        entries.append(.whoInfo(ProfileCommentsStrings.whoInfoNobody))
++    }
++    entries.append(.moderationHeader(ProfileCommentsStrings.moderationHeader))
++    entries.append(.approve(ProfileCommentsStrings.approveNew, settings.approve))
++    entries.append(.approveInfo(ProfileCommentsStrings.approveInfo))
++    entries.append(.howHeader(ProfileCommentsStrings.howHeader))
++    entries.append(.how(0, ProfileCommentsStrings.how1, ProfileCommentsStrings.how1Sub))
++    entries.append(.how(1, ProfileCommentsStrings.how2, ProfileCommentsStrings.how2Sub))
++    entries.append(.how(2, ProfileCommentsStrings.how3, ProfileCommentsStrings.how3Sub))
++    return entries
++}
++
++/// Value shown on the row in Privacy and Security.
++public func profileCommentsPrivacyValue(context: AccountContext) -> String {
++    let store = ProfileCommentsStore.shared(accountPeerId: context.account.peerId)
++    let settings = store.settings(ownerId: context.account.peerId)
++    return ProfileCommentsStrings.privacyValue(ProfileCommentsStore.whoTitle(settings.who), approval: settings.approve)
++}
++
++/// Emits whenever your own Profile Comments settings change.
++public func profileCommentsPrivacyValueSignal(context: AccountContext) -> Signal<String, NoError> {
++    let accountPeerId = context.account.peerId
++    return Signal<String, NoError> { subscriber in
++        let store = ProfileCommentsStore.shared(accountPeerId: accountPeerId)
++        subscriber.putNext(profileCommentsPrivacyValue(context: context))
++        return (store.updates
++        |> filter { $0 == accountPeerId }).start(next: { _ in
++            subscriber.putNext(profileCommentsPrivacyValue(context: context))
++        })
++    }
++    |> runOn(Queue.mainQueue())
++}
++
++public func profileCommentsSettingsController(context: AccountContext) -> ViewController {
++    let store = ProfileCommentsStore.shared(accountPeerId: context.account.peerId)
++    let accountPeerId = context.account.peerId
++    let settingsPromise = ValuePromise<ProfileCommentsStore.Settings>(store.settings(ownerId: accountPeerId), ignoreRepeated: true)
++
++    let arguments = ProfileCommentsSettingsArguments(setWho: { who in
++        store.updateMySettings { $0.who = who }
++        settingsPromise.set(store.settings(ownerId: accountPeerId))
++    }, setApprove: { value in
++        store.updateMySettings { $0.approve = value }
++        settingsPromise.set(store.settings(ownerId: accountPeerId))
++    })
++
++    let signal = combineLatest(queue: .mainQueue(), context.sharedContext.presentationData, settingsPromise.get())
++    |> map { presentationData, settings -> (ItemListControllerState, (ItemListNodeState, Any)) in
++        let controllerState = ItemListControllerState(presentationData: ItemListPresentationData(presentationData), title: .text(ProfileCommentsStrings.title), leftNavigationButton: nil, rightNavigationButton: nil, backNavigationButton: ItemListBackButton(title: presentationData.strings.Common_Back), animateChanges: true)
++        let listState = ItemListNodeState(presentationData: ItemListPresentationData(presentationData), entries: profileCommentsSettingsEntries(settings: settings), style: .blocks, animateChanges: true)
++        return (controllerState, (listState, arguments))
++    }
++
++    return ItemListController(context: context, state: signal)
++}
+diff --git a/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentsStore.swift b/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentsStore.swift
+new file mode 100644
+index 0000000..14284f8
+--- /dev/null
++++ b/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentsStore.swift
+@@ -0,0 +1,561 @@
++import Foundation
++import SwiftSignalKit
++import TelegramCore
++
++/// Profile Comments: a moderated comment wall on a user's profile. It is a wall, not a chat.
++///
++/// Rules:
++/// - one comment per person every 24 hours;
++/// - only the profile owner can reply (one reply per comment, shown under it);
++/// - visitors can't reply to each other, "Message" opens a private chat instead;
++/// - the owner chooses who can comment (Everybody / My Contacts / Nobody), can require approval,
++///   and can pin, hide or delete any comment. Visitors can report a comment.
++///
++/// The store keeps a per-account cache in UserDefaults. Every mutating method maps 1:1 to a method
++/// of the proposed MTProto API (docs/API.md, `profileComments.*`). Until the server side exists the
++/// cache is the source of truth, which is enough to run and demo the whole flow.
++public final class ProfileCommentsStore {
++    /// Seeds sample comments on your own wall so the feature can be demoed on a fresh account.
++    public static var demoData = true
++
++    public static let cooldown: TimeInterval = 24 * 60 * 60
++    public static let maxLength = 300
++    public static let minLength = 2
++    public static let maxTags = 3
++    public static let reactions: [String] = ["❤️", "👍", "🔥", "🥰", "👏", "😁", "🎉", "🤩", "😮", "🙏", "💯", "👌"]
++
++    public struct Tag: Equatable {
++        public let id: String
++        public let emoji: String
++        public let title: String
++    }
++
++    public static let tags: [Tag] = [
++        Tag(id: "recommend", emoji: "👍", title: ProfileCommentsStrings.tagRecommend),
++        Tag(id: "worked", emoji: "🤝", title: ProfileCommentsStrings.tagWorked),
++        Tag(id: "designer", emoji: "🎨", title: ProfileCommentsStrings.tagDesigner),
++        Tag(id: "reliable", emoji: "⚡", title: ProfileCommentsStrings.tagReliable),
++        Tag(id: "creative", emoji: "✨", title: ProfileCommentsStrings.tagCreative),
++        Tag(id: "mentor", emoji: "🧭", title: ProfileCommentsStrings.tagMentor)
++    ]
++
++    public static func tag(id: String) -> Tag? {
++        return self.tags.first(where: { $0.id == id })
++    }
++
++    public enum Who: Int32, Codable {
++        case everybody = 0
++        case contacts = 1
++        case nobody = 2
++    }
++
++    public enum Status: Int32, Codable {
++        case approved = 0
++        case pending = 1
++        case hidden = 2
++    }
++
++    public struct Settings: Codable, Equatable {
++        public var who: Who = .everybody
++        public var approve: Bool = false
++
++        public init() {
++        }
++    }
++
++    public struct Comment: Codable, Equatable {
++        public var id: Int64
++        public var authorId: Int64
++        /// Used when the author isn't known locally (and for demo data).
++        public var authorName: String?
++        public var text: String
++        public var date: Double
++        public var tags: [String]
++        public var status: Status
++        public var pinned: Bool
++        public var replyText: String?
++        public var replyDate: Double?
++        /// emoji -> user ids
++        public var reactions: [String: [Int64]]
++        public var reports: [Int64]
++
++        public var hasReply: Bool {
++            return !(self.replyText ?? "").isEmpty
++        }
++
++        public func reactionCount(_ emoji: String) -> Int {
++            return self.reactions[emoji]?.count ?? 0
++        }
++
++        /// Reactions with at least one user, most popular first.
++        public var sortedReactions: [String] {
++            return self.reactions.filter { !$0.value.isEmpty }.sorted(by: { lhs, rhs in
++                if lhs.value.count != rhs.value.count {
++                    return lhs.value.count > rhs.value.count
++                }
++                return lhs.key < rhs.key
++            }).map { $0.key }
++        }
++    }
++
++    public enum LeaveState: Equatable {
++        case owner
++        case allowed
++        case disabled(String)
++    }
++
++    private static var instances: [Int64: ProfileCommentsStore] = [:]
++    private static let instancesLock = NSLock()
++
++    /// Safe to call from any thread: PeerInfoData asks for tab visibility off the main queue.
++    public static func shared(accountPeerId: EnginePeer.Id) -> ProfileCommentsStore {
++        self.instancesLock.lock()
++        defer {
++            self.instancesLock.unlock()
++        }
++        let key = accountPeerId.toInt64()
++        if let current = self.instances[key] {
++            return current
++        }
++        let store = ProfileCommentsStore(accountPeerId: accountPeerId)
++        self.instances[key] = store
++        return store
++    }
++
++    public let accountPeerId: EnginePeer.Id
++    private let defaults: UserDefaults
++    private var walls: [Int64: [Comment]] = [:]
++    private var settingsCache: [Int64: Settings] = [:]
++    private let updatesPipe = ValuePipe<EnginePeer.Id>()
++    private let lock = NSRecursiveLock()
++
++    /// Emits the owner id whenever that wall or its settings change.
++    public var updates: Signal<EnginePeer.Id, NoError> {
++        return self.updatesPipe.signal()
++    }
++
++    private init(accountPeerId: EnginePeer.Id) {
++        self.accountPeerId = accountPeerId
++        self.defaults = UserDefaults(suiteName: "profile_comments_\(accountPeerId.toInt64())") ?? .standard
++    }
++
++    // MARK: - Identity
++
++    public func isOwner(_ ownerId: EnginePeer.Id) -> Bool {
++        return ownerId == self.accountPeerId
++    }
++
++    public func isMine(_ comment: Comment) -> Bool {
++        return comment.authorId == self.accountPeerId.toInt64()
++    }
++
++    /// Whether the Comments tab should appear on this profile.
++    public func isTabVisible(ownerId: EnginePeer.Id) -> Bool {
++        if self.isOwner(ownerId) {
++            return true
++        }
++        return self.approvedCount(ownerId: ownerId) > 0 || self.settings(ownerId: ownerId).who != .nobody
++    }
++
++    // MARK: - Settings
++
++    public func settings(ownerId: EnginePeer.Id) -> Settings {
++        self.lock.lock()
++        defer {
++            self.lock.unlock()
++        }
++        let key = ownerId.toInt64()
++        if let current = self.settingsCache[key] {
++            return current
++        }
++        // TODO(server): visitors get these values from userFull.profile_comments_settings.
++        var value = Settings()
++        if let data = self.defaults.data(forKey: "settings_\(key)"), let decoded = try? JSONDecoder().decode(Settings.self, from: data) {
++            value = decoded
++        }
++        self.settingsCache[key] = value
++        return value
++    }
++
++    /// account.setProfileCommentsSettings
++    public func updateMySettings(_ f: (inout Settings) -> Void) {
++        let key = self.accountPeerId.toInt64()
++        self.lock.lock()
++        var value = self.settings(ownerId: self.accountPeerId)
++        f(&value)
++        self.settingsCache[key] = value
++        if let data = try? JSONEncoder().encode(value) {
++            self.defaults.set(data, forKey: "settings_\(key)")
++        }
++        self.lock.unlock()
++        self.updatesPipe.putNext(self.accountPeerId)
++    }
++
++    // MARK: - Reading
++
++    /// profileComments.getComments
++    public func all(ownerId: EnginePeer.Id) -> [Comment] {
++        self.lock.lock()
++        defer {
++            self.lock.unlock()
++        }
++        let key = ownerId.toInt64()
++        if let current = self.walls[key] {
++            return current
++        }
++        var list: [Comment] = []
++        if let data = self.defaults.data(forKey: "wall_\(key)"), let decoded = try? JSONDecoder().decode([Comment].self, from: data) {
++            list = decoded
++            self.walls[key] = list
++        } else if ProfileCommentsStore.demoData && self.isOwner(ownerId) {
++            list = ProfileCommentsStore.demoComments()
++            self.walls[key] = list
++            self.save(ownerId: ownerId)
++        } else {
++            self.walls[key] = list
++        }
++        return list
++    }
++
++    /// What the current user sees: newest first, pinned on top. The owner sees everything except the
++    /// pending queue (shown separately); visitors see approved comments and their own pending one.
++    public func visible(ownerId: EnginePeer.Id, tagFilter: String?) -> [Comment] {
++        let owner = self.isOwner(ownerId)
++        var result = self.all(ownerId: ownerId).filter { comment in
++            if owner {
++                return comment.status != .pending
++            } else {
++                return comment.status == .approved || (comment.status == .pending && self.isMine(comment))
++            }
++        }
++        if let tagFilter {
++            result = result.filter { $0.tags.contains(tagFilter) }
++        }
++        result.sort(by: { lhs, rhs in
++            let lp = lhs.pinned && lhs.status == .approved
++            let rp = rhs.pinned && rhs.status == .approved
++            if lp != rp {
++                return lp
++            }
++            return lhs.date > rhs.date
++        })
++        return result
++    }
++
++    public func pending(ownerId: EnginePeer.Id) -> [Comment] {
++        guard self.isOwner(ownerId) else {
++            return []
++        }
++        return self.all(ownerId: ownerId).filter { $0.status == .pending }.sorted(by: { $0.date > $1.date })
++    }
++
++    public func approvedCount(ownerId: EnginePeer.Id) -> Int {
++        return self.all(ownerId: ownerId).filter { $0.status == .approved }.count
++    }
++
++    /// Tag id and number of approved comments with it, most used first.
++    public func tagCounts(ownerId: EnginePeer.Id) -> [(String, Int)] {
++        var counts: [String: Int] = [:]
++        for comment in self.all(ownerId: ownerId) where comment.status == .approved {
++            for tag in comment.tags where ProfileCommentsStore.tag(id: tag) != nil {
++                counts[tag, default: 0] += 1
++            }
++        }
++        return counts.sorted(by: { lhs, rhs in
++            if lhs.value != rhs.value {
++                return lhs.value > rhs.value
++            }
++            return lhs.key < rhs.key
++        }).map { ($0.key, $0.value) }
++    }
++
++    private func myRecent(ownerId: EnginePeer.Id) -> Comment? {
++        let since = Date().timeIntervalSince1970 - ProfileCommentsStore.cooldown
++        return self.all(ownerId: ownerId).filter { self.isMine($0) && $0.date > since }.max(by: { $0.date < $1.date })
++    }
++
++    /// - Parameter ownerIsMutualContact: whether the owner has us in contacts (needed for "My Contacts").
++    public func leaveState(ownerId: EnginePeer.Id, ownerFirstName: String, ownerIsMutualContact: Bool) -> LeaveState {
++        if self.isOwner(ownerId) {
++            return .owner
++        }
++        let settings = self.settings(ownerId: ownerId)
++        switch settings.who {
++        case .nobody:
++            return .disabled(ProfileCommentsStrings.turnedOff(ownerFirstName))
++        case .contacts where !ownerIsMutualContact:
++            return .disabled(ProfileCommentsStrings.contactsOnly(ownerFirstName))
++        default:
++            break
++        }
++        if let recent = self.myRecent(ownerId: ownerId) {
++            let left = recent.date + ProfileCommentsStore.cooldown - Date().timeIntervalSince1970
++            return .disabled(ProfileCommentsStrings.cooldown(ProfileCommentsStore.formatWait(left)))
++        }
++        return .allowed
++    }
++
++    // MARK: - Writing
++
++    /// profileComments.postComment
++    @discardableResult
++    public func post(ownerId: EnginePeer.Id, text: String, tags: [String], ownerFirstName: String, ownerIsMutualContact: Bool) -> Comment? {
++        guard case .allowed = self.leaveState(ownerId: ownerId, ownerFirstName: ownerFirstName, ownerIsMutualContact: ownerIsMutualContact) else {
++            return nil
++        }
++        var text = text.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard text.count >= ProfileCommentsStore.minLength else {
++            return nil
++        }
++        if text.count > ProfileCommentsStore.maxLength {
++            text = String(text.prefix(ProfileCommentsStore.maxLength))
++        }
++        var cleanTags: [String] = []
++        for tag in tags where ProfileCommentsStore.tag(id: tag) != nil && !cleanTags.contains(tag) && cleanTags.count < ProfileCommentsStore.maxTags {
++            cleanTags.append(tag)
++        }
++        let now = Date().timeIntervalSince1970
++        let comment = Comment(
++            id: Int64(now * 1000.0),
++            authorId: self.accountPeerId.toInt64(),
++            authorName: nil,
++            text: text,
++            date: now,
++            tags: cleanTags,
++            status: self.settings(ownerId: ownerId).approve ? .pending : .approved,
++            pinned: false,
++            replyText: nil,
++            replyDate: nil,
++            reactions: [:],
++            reports: []
++        )
++        self.lock.lock()
++        var list = self.all(ownerId: ownerId)
++        list.append(comment)
++        self.walls[ownerId.toInt64()] = list
++        self.lock.unlock()
++        self.commit(ownerId: ownerId)
++        return comment
++    }
++
++    private func modify(ownerId: EnginePeer.Id, commentId: Int64, _ f: (inout Comment) -> Void) {
++        self.lock.lock()
++        var list = self.all(ownerId: ownerId)
++        guard let index = list.firstIndex(where: { $0.id == commentId }) else {
++            self.lock.unlock()
++            return
++        }
++        f(&list[index])
++        self.walls[ownerId.toInt64()] = list
++        self.lock.unlock()
++        self.commit(ownerId: ownerId)
++    }
++
++    /// profileComments.setReply (owner only; empty text removes the reply)
++    public func setReply(ownerId: EnginePeer.Id, commentId: Int64, text: String?) {
++        guard self.isOwner(ownerId) else {
++            return
++        }
++        var value = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
++        if value.count > ProfileCommentsStore.maxLength {
++            value = String(value.prefix(ProfileCommentsStore.maxLength))
++        }
++        self.modify(ownerId: ownerId, commentId: commentId) { comment in
++            comment.replyText = value.isEmpty ? nil : value
++            comment.replyDate = Date().timeIntervalSince1970
++        }
++    }
++
++    /// profileComments.setStatus (owner only): approve, hide or show again
++    public func setStatus(ownerId: EnginePeer.Id, commentId: Int64, status: Status) {
++        guard self.isOwner(ownerId) else {
++            return
++        }
++        self.modify(ownerId: ownerId, commentId: commentId) { comment in
++            comment.status = status
++            if status != .approved {
++                comment.pinned = false
++            }
++        }
++    }
++
++    /// profileComments.togglePin (owner only). One pinned comment at a time. Returns the new state.
++    @discardableResult
++    public func togglePin(ownerId: EnginePeer.Id, commentId: Int64) -> Bool {
++        guard self.isOwner(ownerId) else {
++            return false
++        }
++        self.lock.lock()
++        var list = self.all(ownerId: ownerId)
++        guard let index = list.firstIndex(where: { $0.id == commentId }), list[index].status == .approved else {
++            self.lock.unlock()
++            return false
++        }
++        let pin = !list[index].pinned
++        for i in 0 ..< list.count {
++            list[i].pinned = false
++        }
++        list[index].pinned = pin
++        self.walls[ownerId.toInt64()] = list
++        self.lock.unlock()
++        self.commit(ownerId: ownerId)
++        return pin
++    }
++
++    /// profileComments.deleteComment (owner: any comment, visitor: own comment)
++    public func delete(ownerId: EnginePeer.Id, commentId: Int64) {
++        self.lock.lock()
++        var list = self.all(ownerId: ownerId)
++        guard let index = list.firstIndex(where: { $0.id == commentId }), self.isOwner(ownerId) || self.isMine(list[index]) else {
++            self.lock.unlock()
++            return
++        }
++        list.remove(at: index)
++        self.walls[ownerId.toInt64()] = list
++        self.lock.unlock()
++        self.commit(ownerId: ownerId)
++    }
++
++    /// profileComments.report (visitors)
++    public func report(ownerId: EnginePeer.Id, commentId: Int64) {
++        let me = self.accountPeerId.toInt64()
++        self.modify(ownerId: ownerId, commentId: commentId) { comment in
++            if comment.authorId != me && !comment.reports.contains(me) {
++                comment.reports.append(me)
++            }
++        }
++    }
++
++    public func isReportedByMe(_ comment: Comment) -> Bool {
++        return comment.reports.contains(self.accountPeerId.toInt64())
++    }
++
++    public func hasMyReaction(_ comment: Comment, emoji: String) -> Bool {
++        return comment.reactions[emoji]?.contains(self.accountPeerId.toInt64()) ?? false
++    }
++
++    /// profileComments.sendReaction. Returns true when the reaction was added.
++    @discardableResult
++    public func toggleReaction(ownerId: EnginePeer.Id, commentId: Int64, emoji: String) -> Bool {
++        let me = self.accountPeerId.toInt64()
++        var added = false
++        self.modify(ownerId: ownerId, commentId: commentId) { comment in
++            guard comment.status == .approved else {
++                return
++            }
++            var users = comment.reactions[emoji] ?? []
++            if let index = users.firstIndex(of: me) {
++                users.remove(at: index)
++            } else {
++                users.append(me)
++                added = true
++            }
++            comment.reactions[emoji] = users
++        }
++        return added
++    }
++
++    private func commit(ownerId: EnginePeer.Id) {
++        self.save(ownerId: ownerId)
++        self.updatesPipe.putNext(ownerId)
++    }
++
++    private func save(ownerId: EnginePeer.Id) {
++        self.lock.lock()
++        defer {
++            self.lock.unlock()
++        }
++        let key = ownerId.toInt64()
++        guard let list = self.walls[key], let data = try? JSONEncoder().encode(list) else {
++            return
++        }
++        self.defaults.set(data, forKey: "wall_\(key)")
++    }
++
++    // MARK: - Formatting
++
++    public static func formatAgo(_ date: Double) -> String {
++        let now = Date()
++        let seconds = now.timeIntervalSince1970 - date
++        if seconds < 60 {
++            return ProfileCommentsStrings.justNow
++        }
++        if seconds < 3600 {
++            return ProfileCommentsStrings.minutesAgo(Int(seconds / 60))
++        }
++        let calendar = Calendar.current
++        let then = Date(timeIntervalSince1970: date)
++        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: then), to: calendar.startOfDay(for: now)).day ?? 0
++        if days <= 0 {
++            return ProfileCommentsStrings.hoursAgo(Int(seconds / 3600))
++        }
++        if days == 1 {
++            return ProfileCommentsStrings.yesterday
++        }
++        if days < 7 {
++            return ProfileCommentsStrings.daysAgo(days)
++        }
++        let formatter = DateFormatter()
++        formatter.setLocalizedDateFormatFromTemplate(calendar.component(.year, from: then) == calendar.component(.year, from: now) ? "MMM d" : "MMM d, yyyy")
++        return formatter.string(from: then)
++    }
++
++    public static func formatWait(_ seconds: TimeInterval) -> String {
++        let minutes = max(1, Int(ceil(seconds / 60.0)))
++        let h = minutes / 60
++        let m = minutes % 60
++        if h > 0 {
++            return m > 0 ? "\(h) h \(m) min" : "\(h) h"
++        }
++        return "\(m) min"
++    }
++
++    public static func tagLine(_ comment: Comment) -> String {
++        return comment.tags.compactMap { id -> String? in
++            guard let tag = ProfileCommentsStore.tag(id: id) else {
++                return nil
++            }
++            return "\(tag.emoji) \(tag.title)"
++        }.joined(separator: "  ·  ")
++    }
++
++    public static func whoTitle(_ who: Who) -> String {
++        switch who {
++        case .everybody:
++            return ProfileCommentsStrings.whoEverybody
++        case .contacts:
++            return ProfileCommentsStrings.whoContacts
++        case .nobody:
++            return ProfileCommentsStrings.whoNobody
++        }
++    }
++
++    // MARK: - Demo
++
++    private static func demoComments() -> [Comment] {
++        let now = Date().timeIntervalSince1970
++        let day = ProfileCommentsStore.cooldown
++        func make(_ n: Int64, _ name: String, _ text: String, _ date: Double, _ status: Status, _ tags: [String], _ emoji: String?, _ count: Int) -> Comment {
++            var reactions: [String: [Int64]] = [:]
++            if let emoji, count > 0 {
++                reactions[emoji] = (0 ..< count).map { -10 - Int64($0) }
++            }
++            // Negative ids never collide with real users and are treated as "not known locally".
++            return Comment(id: n, authorId: -1000 - n, authorName: name, text: text, date: date, tags: tags, status: status, pinned: false, replyText: nil, replyDate: nil, reactions: reactions, reports: [])
++        }
++        var noah = make(2, "Noah Bennett", "Super reliable designer. Delivered the whole onboarding flow two days early.", now - day - 3000, .approved, ["recommend", "reliable"], "👍", 4)
++        noah.pinned = true
++        noah.replyText = "Thanks Noah, that project was a joy 🙌"
++        noah.replyDate = now - day
++        var emma = make(4, "Emma Wilson", "The mockup you sent yesterday turned out so good. We shipped it to the whole team!", now - 20 * 60, .approved, ["worked", "recommend", "designer"], "🔥", 3)
++        emma.reactions["❤️"] = [-1]
++        return [
++            make(1, "Sofia Martinez", "Hi from Barcelona! Saw the prototype you're building, it looks amazing 🎉", now - 4 * day, .approved, ["creative"], "🎉", 2),
++            noah,
++            make(3, "Liam Brooks", "Thanks for the talk in the design group. The part about prototyping with real code changed how I work.", now - 3 * 3600, .approved, ["mentor"], "👍", 1),
++            emma,
++            make(5, "Olivia Hayes", "Can you share the Figma file? Would love to learn from it.", now - 6 * 60, .pending, [], nil, 0),
++            make(6, "Alex Morgan", "Rebuilt our landing page in two days. Clean files and great communication! 🔥", now - 2 * 60, .pending, ["recommend", "worked"], nil, 0)
++        ]
++    }
++}
+diff --git a/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentsStrings.swift b/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentsStrings.swift
+new file mode 100644
+index 0000000..eb96e53
+--- /dev/null
++++ b/submodules/TelegramUI/Components/PeerInfo/ProfileCommentsUI/Sources/ProfileCommentsStrings.swift
+@@ -0,0 +1,116 @@
++import Foundation
++
++/// English strings for Profile Comments.
++/// The same keys are listed in `Localizable.strings.additions` (ProfileComments.*) so they can be moved
++/// into Telegram/Telegram-iOS/en.lproj/Localizable.strings and PresentationStrings when merged.
++public enum ProfileCommentsStrings {
++    public static let tab = "Comments"
++    public static let title = "Profile Comments"
++
++    public static let tagRecommend = "Recommend"
++    public static let tagWorked = "Worked together"
++    public static let tagDesigner = "Great designer"
++    public static let tagReliable = "Fast & reliable"
++    public static let tagCreative = "Creative"
++    public static let tagMentor = "Helpful mentor"
++
++    public static let justNow = "just now"
++    public static func minutesAgo(_ n: Int) -> String { return "\(n) min ago" }
++    public static func hoursAgo(_ n: Int) -> String { return "\(n) h ago" }
++    public static let yesterday = "Yesterday"
++    public static func daysAgo(_ n: Int) -> String { return "\(n) days ago" }
++
++    public static let leave = "Leave a comment"
++    public static func turnedOff(_ name: String) -> String { return "\(name) turned off comments" }
++    public static func contactsOnly(_ name: String) -> String { return "Only \(name)'s contacts can comment" }
++    public static func cooldown(_ wait: String) -> String { return "You can comment again in \(wait)" }
++
++    public static let you = "You"
++    public static let awaiting = "Awaiting approval"
++    public static let hiddenLabel = "Hidden from visitors"
++    public static func reports(_ n: Int) -> String { return n == 1 ? "1 report" : "\(n) reports" }
++    public static func replyTitle(_ name: String, _ date: String) -> String { return "\(name) · author · \(date)" }
++    public static let approve = "Approve"
++    public static let dismiss = "Dismiss"
++
++    public static func count(_ n: Int) -> String { return n == 1 ? "1 comment" : "\(n) comments" }
++    public static let filterAll = "All"
++    public static func pendingHeader(_ n: Int) -> String { return "Waiting for approval · \(n)" }
++    public static let pendingHint = "Only you see these"
++    public static let modePublic = "Public"
++    public static let modeApproval = "Approval on"
++    public static let modeContacts = "Contacts only"
++    public static let modeOff = "Comments off"
++    public static let settingsShort = "Settings"
++    public static let emptyTitle = "No comments yet"
++    public static func emptyVisitor(_ name: String) -> String { return "Be the first to leave a comment on \(name)'s profile." }
++    public static let emptyOwner = "When people leave comments on your profile, they will appear here."
++    public static func emptyOff(_ name: String) -> String { return "\(name) has turned off comments." }
++    public static func rules(_ name: String) -> String { return "One comment per person every 24 hours. Only \(name) can reply. To talk, send a private message." }
++    public static func rulesOff(_ name: String) -> String { return "\(name) turned off new comments. " }
++    public static func rulesContacts(_ name: String) -> String { return "Only \(name)'s contacts can comment. " }
++
++    public static let reply = "Reply"
++    public static let editReply = "Edit Reply"
++    public static let deleteReply = "Delete Reply"
++    public static let pin = "Pin to Top"
++    public static let unpin = "Unpin"
++    public static let hide = "Hide from Visitors"
++    public static let show = "Show to Visitors"
++    public static func message(_ name: String) -> String { return "Message \(name)" }
++    public static let copy = "Copy Text"
++    public static let react = "Add Reaction"
++    public static let report = "Report"
++    public static let reported = "Reported"
++    public static let delete = "Delete Comment"
++    public static let deleteMine = "Delete My Comment"
++    public static let decline = "Decline"
++    public static let cancel = "Cancel"
++
++    public static let toastApproved = "Comment approved"
++    public static let toastDismissed = "Comment dismissed"
++    public static let toastDeleted = "Comment deleted"
++    public static let toastPinned = "Pinned to the top"
++    public static let toastUnpinned = "Comment unpinned"
++    public static let toastHidden = "Comment hidden from visitors"
++    public static let toastShown = "Comment is visible again"
++    public static func toastReported(_ name: String) -> String { return "Thanks. \(name) will review this comment." }
++    public static let toastCopied = "Text copied to clipboard"
++    public static let toastPosted = "Comment posted"
++    public static func toastPending(_ name: String) -> String { return "Sent. It will appear after \(name) approves it." }
++    public static let toastReply = "Reply posted"
++    public static let toastReplyDeleted = "Reply deleted"
++    public static let sampleUser = "This is a sample comment, so there is no chat to open."
++
++    public static func sheetTitle(_ name: String) -> String { return "Comment on \(name)'s profile" }
++    public static let sheetSubPublic = "Visible to everyone who opens this profile"
++    public static func sheetSubApproval(_ name: String) -> String { return "\(name) will review it before it appears" }
++    public static func sheetTags(_ name: String) -> String { return "What describes \(name)? (up to 3)" }
++    public static func sheetHint(_ name: String) -> String { return "Write something about working with \(name)" }
++    public static func sheetNote(_ name: String) -> String { return "You can leave one comment every 24 hours, and only \(name) can reply. Want to talk?" }
++    public static let sheetPost = "Post Comment"
++    public static func replyTo(_ name: String) -> String { return "Reply to \(name)" }
++    public static func editReplyTo(_ name: String) -> String { return "Edit reply to \(name)" }
++    public static func replyHint(_ name: String) -> String { return "Thank \(name) or add context" }
++    public static func replyNote(_ name: String) -> String { return "One reply per comment. It appears under \(name)'s comment, and visitors can't reply to it." }
++    public static let replyPost = "Post Reply"
++
++    public static let whoHeader = "WHO CAN COMMENT ON MY PROFILE?"
++    public static let whoEverybody = "Everybody"
++    public static let whoContacts = "My Contacts"
++    public static let whoNobody = "Nobody"
++    public static let whoInfoEverybody = "Anyone who opens your profile can leave one comment a day."
++    public static let whoInfoContacts = "Only people in your contacts can leave a comment on your profile."
++    public static let whoInfoNobody = "Existing comments stay visible, but no one can add new ones."
++    public static let moderationHeader = "MODERATION"
++    public static let approveNew = "Approve New Comments"
++    public static let approveInfo = "When this is on, new comments stay hidden until you approve them on your profile."
++    public static let howHeader = "HOW COMMENTS WORK"
++    public static let how1 = "One comment per person a day"
++    public static let how1Sub = "Keeps your profile a wall, not a chat."
++    public static let how2 = "Only you can reply"
++    public static let how2Sub = "Visitors who want to talk are sent to a private chat."
++    public static let how3 = "Pin, hide or delete any comment"
++    public static let how3Sub = "Tap a comment on your profile to manage it."
++    public static func privacyValue(_ who: String, approval: Bool) -> String { return approval ? "\(who), approval" : who }
++}

@@ -1,0 +1,43 @@
+# Builds a test APK of this branch (Telegram Beta package, installs next to the regular app).
+# GitHub → Actions → "Build Profile Comments APK" → Run workflow. The APK appears under Artifacts.
+name: Build Profile Comments APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ profile-comments ]
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/share/swift /opt/hostedtoolcache/CodeQL || true
+          df -h /
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install Android NDK, CMake and SDK 36
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.2.12479018" "cmake;3.22.1" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+
+      - name: Build debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew :TMessagesProj_App:assembleAfatDebug --no-daemon --stacktrace \
+            -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=1g"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: telegram-profile-comments-apk
+          path: TMessagesProj_App/build/outputs/apk/**/*.apk

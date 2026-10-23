@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Profile Comments. Kept in a separate file so the feature is easy to review and merge. -->
+<resources>
+    <string name="ProfileCommentsTab">Comments</string>
+    <string name="ProfileCommentsTitle">Profile Comments</string>
+
+    <string name="ProfileCommentsTagRecommend">Recommend</string>
+    <string name="ProfileCommentsTagWorked">Worked together</string>
+    <string name="ProfileCommentsTagDesigner">Great designer</string>
+    <string name="ProfileCommentsTagReliable">Fast &amp; reliable</string>
+    <string name="ProfileCommentsTagCreative">Creative</string>
+    <string name="ProfileCommentsTagMentor">Helpful mentor</string>
+
+    <string name="ProfileCommentsJustNow">just now</string>
+    <string name="ProfileCommentsMinAgo">%1$d min ago</string>
+    <string name="ProfileCommentsHoursAgo">%1$d h ago</string>
+    <string name="ProfileCommentsYesterday">Yesterday</string>
+    <string name="ProfileCommentsDaysAgo">%1$d days ago</string>
+    <string name="ProfileCommentsWaitH">%1$d h</string>
+    <string name="ProfileCommentsWaitHM">%1$d h %2$d min</string>
+    <string name="ProfileCommentsWaitM">%1$d min</string>
+
+    <string name="ProfileCommentsLeave">Leave a comment</string>
+    <string name="ProfileCommentsTurnedOff">%1$s turned off comments</string>
+    <string name="ProfileCommentsContactsOnly">Only %1$s\'s contacts can comment</string>
+    <string name="ProfileCommentsCooldown">You can comment again in %1$s</string>
+
+    <string name="ProfileCommentsYou">You</string>
+    <string name="ProfileCommentsAwaiting">Awaiting approval</string>
+    <string name="ProfileCommentsHiddenLabel">Hidden from visitors</string>
+    <string name="ProfileCommentsReports_zero">%1$d reports</string>
+    <string name="ProfileCommentsReports_one">%1$d report</string>
+    <string name="ProfileCommentsReports_two">%1$d reports</string>
+    <string name="ProfileCommentsReports_few">%1$d reports</string>
+    <string name="ProfileCommentsReports_many">%1$d reports</string>
+    <string name="ProfileCommentsReports_other">%1$d reports</string>
+    <string name="ProfileCommentsReplyTitle">%1$s · author · %2$s</string>
+    <string name="ProfileCommentsApprove">Approve</string>
+    <string name="ProfileCommentsDismiss">Dismiss</string>
+
+    <string name="ProfileCommentsCount_zero">%1$d comments</string>
+    <string name="ProfileCommentsCount_one">%1$d comment</string>
+    <string name="ProfileCommentsCount_two">%1$d comments</string>
+    <string name="ProfileCommentsCount_few">%1$d comments</string>
+    <string name="ProfileCommentsCount_many">%1$d comments</string>
+    <string name="ProfileCommentsCount_other">%1$d comments</string>
+    <string name="ProfileCommentsFilterAll">All</string>
+    <string name="ProfileCommentsPendingHeader">Waiting for approval · %1$d</string>
+    <string name="ProfileCommentsPendingHint">Only you see these</string>
+    <string name="ProfileCommentsModePublic">Public</string>
+    <string name="ProfileCommentsModeApproval">Approval on</string>
+    <string name="ProfileCommentsModeContacts">Contacts only</string>
+    <string name="ProfileCommentsModeOff">Comments off</string>
+    <string name="ProfileCommentsSettingsShort">Settings</string>
+    <string name="ProfileCommentsEmptyTitle">No comments yet</string>
+    <string name="ProfileCommentsEmptyVisitor">Be the first to leave a comment on %1$s\'s profile.</string>
+    <string name="ProfileCommentsEmptyOwner">When people leave comments on your profile, they will appear here.</string>
+    <string name="ProfileCommentsEmptyOff">%1$s has turned off comments.</string>
+    <string name="ProfileCommentsRules">One comment per person every 24 hours. Only %1$s can reply. To talk, send a private message.</string>
+    <string name="ProfileCommentsRulesOff">%1$s turned off new comments. </string>
+    <string name="ProfileCommentsRulesContacts">Only %1$s\'s contacts can comment. </string>
+
+    <string name="ProfileCommentsReply">Reply</string>
+    <string name="ProfileCommentsEditReply">Edit reply</string>
+    <string name="ProfileCommentsDeleteReply">Delete reply</string>
+    <string name="ProfileCommentsPin">Pin to top</string>
+    <string name="ProfileCommentsUnpin">Unpin</string>
+    <string name="ProfileCommentsHide">Hide from visitors</string>
+    <string name="ProfileCommentsShow">Show to visitors</string>
+    <string name="ProfileCommentsMessage">Message %1$s</string>
+    <string name="ProfileCommentsCopy">Copy text</string>
+    <string name="ProfileCommentsReport">Report</string>
+    <string name="ProfileCommentsReported">Reported</string>
+    <string name="ProfileCommentsDelete">Delete comment</string>
+    <string name="ProfileCommentsDeleteMine">Delete my comment</string>
+    <string name="ProfileCommentsDecline">Decline</string>
+
+    <string name="ProfileCommentsToastApproved">Comment approved</string>
+    <string name="ProfileCommentsToastDismissed">Comment dismissed</string>
+    <string name="ProfileCommentsToastDeleted">Comment deleted</string>
+    <string name="ProfileCommentsToastPinned">Pinned to the top</string>
+    <string name="ProfileCommentsToastUnpinned">Comment unpinned</string>
+    <string name="ProfileCommentsToastHidden">Comment hidden from visitors</string>
+    <string name="ProfileCommentsToastShown">Comment is visible again</string>
+    <string name="ProfileCommentsToastReported">Thanks. %1$s will review this comment.</string>
+    <string name="ProfileCommentsToastCopied">Text copied to clipboard</string>
+    <string name="ProfileCommentsToastPosted">Comment posted</string>
+    <string name="ProfileCommentsToastPending">Sent. It will appear after %1$s approves it.</string>
+    <string name="ProfileCommentsToastReply">Reply posted</string>
+    <string name="ProfileCommentsToastReplyDeleted">Reply deleted</string>
+    <string name="ProfileCommentsSampleUser">This is a sample comment, so there is no chat to open.</string>
+
+    <string name="ProfileCommentsSheetTitle">Comment on %1$s\'s profile</string>
+    <string name="ProfileCommentsSheetSubPublic">Visible to everyone who opens this profile</string>
+    <string name="ProfileCommentsSheetSubApproval">%1$s will review it before it appears</string>
+    <string name="ProfileCommentsSheetTags">What describes %1$s? (up to 3)</string>
+    <string name="ProfileCommentsSheetField">Your comment</string>
+    <string name="ProfileCommentsSheetHint">Write something about working with %1$s</string>
+    <string name="ProfileCommentsSheetNote">You can leave one comment every 24 hours, and only %1$s can reply. Want to talk? **Message %1$s**</string>
+    <string name="ProfileCommentsSheetPost">Post comment</string>
+    <string name="ProfileCommentsReplyTo">Reply to %1$s</string>
+    <string name="ProfileCommentsEditReplyTo">Edit reply to %1$s</string>
+    <string name="ProfileCommentsReplyField">Your reply</string>
+    <string name="ProfileCommentsReplyHint">Thank %1$s or add context</string>
+    <string name="ProfileCommentsReplyNote">One reply per comment. It appears under %1$s\'s comment, and visitors can\'t reply to it.</string>
+    <string name="ProfileCommentsReplyPost">Post reply</string>
+
+    <string name="ProfileCommentsWhoHeader">Who can comment on my profile?</string>
+    <string name="ProfileCommentsWhoEverybody">Everybody</string>
+    <string name="ProfileCommentsWhoContacts">My Contacts</string>
+    <string name="ProfileCommentsWhoNobody">Nobody</string>
+    <string name="ProfileCommentsWhoInfoEverybody">Anyone who opens your profile can leave one comment a day.</string>
+    <string name="ProfileCommentsWhoInfoContacts">Only people in your contacts can leave a comment on your profile.</string>
+    <string name="ProfileCommentsWhoInfoNobody">Existing comments stay visible, but no one can add new ones.</string>
+    <string name="ProfileCommentsModerationHeader">Moderation</string>
+    <string name="ProfileCommentsApproveNew">Approve new comments</string>
+    <string name="ProfileCommentsApproveInfo">When this is on, new comments stay hidden until you approve them on your profile.</string>
+    <string name="ProfileCommentsHowHeader">How comments work</string>
+    <string name="ProfileCommentsHow1">One comment per person a day</string>
+    <string name="ProfileCommentsHow1Sub">Keeps your profile a wall, not a chat.</string>
+    <string name="ProfileCommentsHow2">Only you can reply</string>
+    <string name="ProfileCommentsHow2Sub">Visitors who want to talk are sent to a private chat.</string>
+    <string name="ProfileCommentsHow3">Pin, hide or delete any comment</string>
+    <string name="ProfileCommentsHow3Sub">Tap a comment on your profile to manage it.</string>
+    <string name="ProfileCommentsPrivacyValueApproval">%1$s, approval</string>
+</resources>
