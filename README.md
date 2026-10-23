@@ -1,4 +1,35 @@
+<div align="center">
+
+<img src="assets/banner.png" alt="Profile Comments for Telegram" width="100%">
+
 # Profile Comments for Telegram
+
+**A comment wall on a Telegram profile — recommendations from people who know you.**
+
+[![Android](https://img.shields.io/badge/Android-Java-3DDC84?style=for-the-badge&logo=android&logoColor=white)](#android)
+[![iOS](https://img.shields.io/badge/iOS-Swift-F05138?style=for-the-badge&logo=swift&logoColor=white)](#ios)
+[![Live demo](https://img.shields.io/badge/Live_demo-open-2AABEE?style=for-the-badge&logo=telegram&logoColor=white)](https://raw.githack.com/alekseyrm1-debug/TELEGRAM-PROFILE-COMMENTS/main/prototype/profil-devori.html)
+
+[**▶ Open the live prototype**](https://raw.githack.com/alekseyrm1-debug/TELEGRAM-PROFILE-COMMENTS/main/prototype/profil-devori.html) &nbsp;·&nbsp; [Features](#-features) &nbsp;·&nbsp; [Android](#android) &nbsp;·&nbsp; [iOS](#ios) &nbsp;·&nbsp; [🇺🇿 O‘zbekcha qo‘llanma](QOLLANMA.md)
+
+</div>
+
+## 📱 Screenshots
+
+<table align="center">
+  <tr><th colspan="2">iOS</th></tr>
+  <tr>
+    <td align="center"><img src="assets/ios-1.jpg" width="240" alt="Profile"><br><sub>Profile</sub></td>
+    <td align="center"><img src="assets/ios-2.jpg" width="240" alt="Comments tab"><br><sub>Comments tab</sub></td>
+  </tr>
+  <tr><th colspan="2">Android</th></tr>
+  <tr>
+    <td align="center"><img src="assets/android-1.jpg" width="240" alt="Profile"><br><sub>Profile</sub></td>
+    <td align="center"><img src="assets/android-2.jpg" width="240" alt="Comments tab"><br><sub>Comments tab</sub></td>
+  </tr>
+</table>
+
+## ✨ Features
 
 A comment wall on a Telegram profile. Friends and colleagues leave a short comment tagged as
 *Recommend*, *Worked together*, *Great designer* and more. It is a wall, not a chat:
@@ -12,7 +43,7 @@ A comment wall on a Telegram profile. Friends and colleagues leave a short comme
 
 The owner and visitors see different layouts automatically. There is no preview toggle.
 
-## What's in this folder
+## 📂 What's in this folder
 
 | Path | What it is |
 |---|---|
@@ -71,7 +102,7 @@ git apply profile-comments-ios.patch
 
 then build as described in the Telegram-iOS README.
 
-## Status
+## ✅ Status
 
 * Android: the new and changed files were type-checked with `javac` against Android 36 and the Telegram sources.
   The only errors left come from the build environment (missing AndroidX artifacts) and show up on unmodified
